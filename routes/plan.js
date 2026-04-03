@@ -9,10 +9,10 @@ const {
 } = require("../controller/plan");
 const authMiddleware = require("../middleware/auth");
 
-router.post("/", authMiddleware, createPlan);
+router.post("/", createPlan);
 router.get("/", fetchAllPlans);
 router.get("/:id", fetchPlanById);
-router.put("/:id", authMiddleware, planUpdate);
-router.delete("/:id", authMiddleware, planDelete);
+router.put("/:id", planUpdate);
+router.delete("/:id", planDelete);
 
 module.exports = router;
