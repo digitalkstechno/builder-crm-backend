@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema(
     password: { type: String },
     role: { type: String, enum: ["ADMIN", "BUILDER"], default: "BUILDER" },
     status: { type: String, default: "active" },
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

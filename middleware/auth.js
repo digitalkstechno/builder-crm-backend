@@ -9,7 +9,7 @@ async function authMiddleware(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    const userVerify = await USER.findById(decoded.id);
+    const userVerify = await USER.findOne({ _id: decoded.id, isDeleted: false });
     if (!userVerify) {
       return res.status(401).json({ status: "Fail", message: "Invalid token" });
     }

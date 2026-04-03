@@ -10,7 +10,7 @@ exports.createUserService = async ({ fullName, email, phone, password, role }) =
 };
 
 exports.loginUserService = async ({ email, password }) => {
-  const userVerify = await USER.findOne({ email });
+  const userVerify = await USER.findOne({ email, isDeleted: false });
   if (!userVerify) throw new Error("Invalid Email or password");
 
   const decryptedPassword = decryptData(userVerify.password);
@@ -23,6 +23,7 @@ exports.loginUserService = async ({ email, password }) => {
 exports.fetchAllUsersService = async ({ page, limit, search }) => {
   const skip = (page - 1) * limit;
   const query = {
+    isDeleted: false,
     $or: [
       { fullName: { $regex: search, $options: "i" } },
       { email: { $regex: search, $options: "i" } },
@@ -37,13 +38,13 @@ exports.fetchAllUsersService = async ({ page, limit, search }) => {
 };
 
 exports.fetchUserByIdService = async (userId) => {
-  const userData = await USER.findById(userId);
+  const userData = await USER.findOne({ _id: userId, isDeleted: false });
   if (!userData) throw new Error("User not found");
   return userData;
 };
 
 exports.userUpdateService = async (userId, body) => {
-  const oldUser = await USER.findById(userId);
+  const oldUser = await USER.findOne({ _id: userId, isDeleted: false });
   if (!oldUser) throw new Error("User not found");
   if (body.password) body.password = encryptData(body.password);
   const updatedUser = await USER.findByIdAndUpdate(userId, body, { new: true });
@@ -51,7 +52,7 @@ exports.userUpdateService = async (userId, body) => {
 };
 
 exports.userDeleteService = async (userId) => {
-  const oldUser = await USER.findById(userId);
+  const oldUser = await USER.findOne({ _id: userId, isDeleted: false });
   if (!oldUser) throw new Error("User not found");
-  await USER.findByIdAndDelete(userId);
+  await USER.findByIdAndUpdate(userId, { isDeleted: true });
 };
