@@ -155,21 +155,7 @@ const createOrder = async (req, res) => {
   try {
     const { amount, planId, phone } = req.body;
     
-    // Check if there is already a PAID payment or existing user
-    const existingUser = await User.findOne({ phone });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: "User already registered." });
-    }
-
-    const alreadyPaid = await PendingRegistration.findOne({ phone, status: "pending" });
-    if (alreadyPaid) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Payment already confirmed for this number. Please complete registration.",
-        resume: true 
-      });
-    }
-
+    // Create order for both new and existing users (renewals)
     const options = {
       amount: amount * 100, // in paise
       currency: "INR",
@@ -201,6 +187,15 @@ const createOrder = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+const calculatePlanEndDate = (plan, startDate = new Date()) => {
+  let endDate = new Date(startDate);
+  if (plan.duration === "Monthly") endDate.setMonth(endDate.getMonth() + 1);
+  else if (plan.duration === "Quarterly") endDate.setMonth(endDate.getMonth() + 3);
+  else if (plan.duration === "Bi-Annually") endDate.setMonth(endDate.getMonth() + 6);
+  else if (plan.duration === "Annually") endDate.setFullYear(endDate.getFullYear() + 1);
+  else endDate.setMonth(endDate.getMonth() + 1); // Default to Monthly
+  return endDate;
+};
 
 const registerBuilder = async (req, res) => {
   try {
@@ -211,7 +206,6 @@ const registerBuilder = async (req, res) => {
       password,
       companyName,
       address,
-      // These are optional if we have pending registration
       planId,
       amountPaid,
       razorpayOrderId,
@@ -219,34 +213,19 @@ const registerBuilder = async (req, res) => {
       razorpaySignature,
     } = req.body;
 
-    // 0. Find Pending Registration if any
-    let finalPlanId = planId;
-    let finalAmountPaid = amountPaid;
-    let finalOrderId = razorpayOrderId;
-    let finalPaymentId = razorpayPaymentId;
-    let finalSignature = razorpaySignature;
-
     const pending = await PendingRegistration.findOne({ phone, status: "pending" });
     if (!pending) {
       return res.status(400).json({ success: false, message: "No active payment found for this number. Please pay first." });
     }
 
-    finalPlanId = pending.planId;
-    finalAmountPaid = pending.amountPaid;
-    finalOrderId = pending.razorpayOrderId;
-    finalPaymentId = pending.razorpayPaymentId;
-    finalSignature = pending.razorpaySignature;
-
-    // 1. Create User
-    const existingUser = await User.findOne({ 
-      $or: [{ email }, { phone }] 
-    });
-
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "User with this email or phone already exists." 
-      });
+      return res.status(400).json({ success: false, message: "User with this email or phone already exists." });
+    }
+
+    const plan = await Plan.findById(pending.planId);
+    if (!plan) {
+      return res.status(404).json({ success: false, message: "Plan not found" });
     }
 
     const newUser = new User({
@@ -256,49 +235,47 @@ const registerBuilder = async (req, res) => {
       password: encryptData(password),
       role: "BUILDER",
     });
-
     const savedUser = await newUser.save();
 
-    // 2. Fetch Plan to calculate duration
-    const plan = await Plan.findById(finalPlanId);
-    if (!plan) {
-      return res.status(404).json({ success: false, message: "Plan not found" });
-    }
+    const startDate = new Date();
+    const endDate = calculatePlanEndDate(plan, startDate);
 
-    let endDate = new Date();
-    if (plan.duration === "Monthly") endDate.setMonth(endDate.getMonth() + 1);
-    else if (plan.duration === "Quarterly") endDate.setMonth(endDate.getMonth() + 3);
-    else if (plan.duration === "Bi-Annually") endDate.setMonth(endDate.getMonth() + 6);
-    else if (plan.duration === "Annually") endDate.setFullYear(endDate.getFullYear() + 1);
+    // Initial Active Subscription Snapshot
+    const activeSubscription = {
+      planId: plan._id,
+      planName: plan.planName,
+      startDate,
+      endDate,
+      amountPaid: pending.amountPaid,
+      noOfStaff: plan.noOfStaff,
+      noOfSites: plan.noOfSites,
+      noOfWhatsapp: plan.noOfWhatsapp,
+      razorpayOrderId: pending.razorpayOrderId,
+      razorpayPaymentId: pending.razorpayPaymentId,
+      status: "active",
+    };
 
-    // 3. Create Builder record
     const newBuilder = new Builder({
       userId: savedUser._id,
-      planId: finalPlanId,
       companyName,
       address,
-      amountPaid: finalAmountPaid,
-      razorpayOrderId: finalOrderId,
-      razorpayPaymentId: finalPaymentId,
-      razorpaySignature: finalSignature,
-      subscriptionEndDate: endDate,
+      currentLimits: {
+        noOfStaff: plan.noOfStaff,
+        noOfSites: plan.noOfSites,
+        noOfWhatsapp: plan.noOfWhatsapp,
+      },
+      subscriptions: [activeSubscription],
     });
 
     await newBuilder.save();
 
-    // 4. Mark pending as completed
-    if (pending) {
-      pending.status = "completed";
-      await pending.save();
-    }
+    pending.status = "completed";
+    await pending.save();
 
     res.status(201).json({
       success: true,
       message: "Builder registered successfully",
-      data: {
-        user: savedUser,
-        builder: newBuilder,
-      },
+      data: { user: savedUser, builder: newBuilder },
     });
   } catch (error) {
     console.error("Register Builder Error:", error);
@@ -316,19 +293,17 @@ const extraManualRegister = async (req, res) => {
       companyName,
       address,
       planId,
-      amountPaid, // Manual price
+      amountPaid,
     } = req.body;
 
-    // Similar logic to registerBuilder but without razorpay verification
-    const existingUser = await User.findOne({ 
-      $or: [{ email }, { phone }] 
-    });
-    
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
     if (existingUser) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "User with this email or phone already exists." 
-      });
+      return res.status(400).json({ success: false, message: "User already registered." });
+    }
+
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ success: false, message: "Plan not found" });
     }
 
     const newUser = new User({
@@ -338,30 +313,35 @@ const extraManualRegister = async (req, res) => {
       password: encryptData(password),
       role: "BUILDER",
     });
-
     const savedUser = await newUser.save();
-    
-    const plan = await Plan.findById(planId);
-    let endDate = new Date();
-    if (plan) {
-        if (plan.duration === "Monthly") endDate.setMonth(endDate.getMonth() + 1);
-        else if (plan.duration === "Quarterly") endDate.setMonth(endDate.getMonth() + 3);
-        else if (plan.duration === "Bi-Annually") endDate.setMonth(endDate.getMonth() + 6);
-        else if (plan.duration === "Annually") endDate.setFullYear(endDate.getFullYear() + 1);
-    } else {
-        // If plan is not found, default to 1 month
-        endDate.setMonth(endDate.getMonth() + 1);
-    }
+
+    const startDate = new Date();
+    const endDate = calculatePlanEndDate(plan, startDate);
+
+    const subscription = {
+      planId: plan._id,
+      planName: plan.planName,
+      startDate,
+      endDate,
+      amountPaid,
+      noOfStaff: plan.noOfStaff,
+      noOfSites: plan.noOfSites,
+      noOfWhatsapp: plan.noOfWhatsapp,
+      razorpayOrderId: "MANUAL",
+      razorpayPaymentId: "MANUAL",
+      status: "active",
+    };
 
     const newBuilder = new Builder({
       userId: savedUser._id,
-      planId: planId,
       companyName,
       address,
-      amountPaid, // Custom price
-      subscriptionEndDate: endDate,
-      razorpayOrderId: "MANUAL",
-      razorpayPaymentId: "MANUAL",
+      currentLimits: {
+        noOfStaff: plan.noOfStaff,
+        noOfSites: plan.noOfSites,
+        noOfWhatsapp: plan.noOfWhatsapp,
+      },
+      subscriptions: [subscription],
     });
 
     await newBuilder.save();
@@ -369,13 +349,71 @@ const extraManualRegister = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Manual builder registration successful",
-      data: {
-        user: savedUser,
-        builder: newBuilder,
-      },
+      data: { user: savedUser, builder: newBuilder },
     });
   } catch (error) {
-    console.error("Manual Register Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const renewSubscription = async (req, res) => {
+  try {
+    const { builderId, planId, amountPaid, razorpayOrderId, razorpayPaymentId } = req.body;
+
+    const builder = await Builder.findById(builderId);
+    if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });
+
+    const plan = await Plan.findById(planId);
+    if (!plan) return res.status(404).json({ success: false, message: "Plan not found" });
+
+    // Find latest subscription to determine start date
+    const latestSub = builder.subscriptions
+      .filter(s => s.status !== "expired" && s.status !== "cancelled")
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0];
+
+    let startDate = new Date();
+    let status = "active";
+
+    if (latestSub && new Date(latestSub.endDate) > new Date()) {
+      startDate = new Date(latestSub.endDate);
+      status = "upcoming";
+    }
+
+    const endDate = calculatePlanEndDate(plan, startDate);
+
+    const newSubscription = {
+      planId: plan._id,
+      planName: plan.planName,
+      startDate,
+      endDate,
+      amountPaid,
+      noOfStaff: plan.noOfStaff,
+      noOfSites: plan.noOfSites,
+      noOfWhatsapp: plan.noOfWhatsapp,
+      razorpayOrderId: razorpayOrderId || "MANUAL",
+      razorpayPaymentId: razorpayPaymentId || "MANUAL",
+      status,
+    };
+
+    builder.subscriptions.push(newSubscription);
+
+    // If it's starting now, update global limits
+    if (status === "active") {
+      builder.currentLimits = {
+        noOfStaff: plan.noOfStaff,
+        noOfSites: plan.noOfSites,
+        noOfWhatsapp: plan.noOfWhatsapp,
+      };
+    }
+
+    await builder.save();
+
+    res.status(200).json({
+      success: true,
+      message: status === "upcoming" ? "Subscription queued successfully" : "Subscription renewed successfully",
+      data: builder
+    });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -397,7 +435,6 @@ const getAllBuilders = async (req, res) => {
     const totalItems = await Builder.countDocuments(query);
     const builders = await Builder.find(query)
       .populate("userId", "fullName email phone status")
-      .populate("planId", "planName price duration noOfStaff noOfSites noOfWhatsapp")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -428,4 +465,5 @@ module.exports = {
   builderLogin,
   getBuilderProfile,
   getAllBuilders,
+  renewSubscription,
 };
