@@ -382,16 +382,36 @@ const extraManualRegister = async (req, res) => {
 
 const getAllBuilders = async (req, res) => {
   try {
-    const builders = await Builder.find({ isDeleted: false })
+    const { page = 1, limit = 10, search = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let query = { isDeleted: false };
+    
+    if (search) {
+      query.$or = [
+        { companyName: { $regex: search, $options: 'i' } },
+        { address: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const totalItems = await Builder.countDocuments(query);
+    const builders = await Builder.find(query)
       .populate("userId", "fullName email phone status")
       .populate("planId", "planName price duration noOfStaff noOfSites noOfWhatsapp")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
     res.status(200).json({
       success: true,
       status: "Success",
-      count: builders.length,
-      data: builders
+      data: builders,
+      pagination: {
+        totalItems,
+        totalPages: Math.ceil(totalItems / limit),
+        currentPage: parseInt(page),
+        limit: parseInt(limit)
+      }
     });
   } catch (error) {
     console.error("Get All Builders Error:", error);
