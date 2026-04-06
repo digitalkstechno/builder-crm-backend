@@ -2,6 +2,7 @@ const User = require("../model/user");
 const Builder = require("../model/builder");
 const Plan = require("../model/plan");
 const PendingRegistration = require("../model/pendingRegistration");
+const Payment = require("../model/payment");
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
 
@@ -104,7 +105,32 @@ const savePaymentInfo = async (req, res) => {
   try {
     const { phone, planId, amountPaid, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
 
-    // Upsert pending registration
+    // VERY IMPORTANT: VERIFY SIGNATURE BEFORE SAVING
+    const secret = process.env.RAZORPAY_KEY_SECRET || "razorpay_secret_placeholder";
+    const generated_signature = crypto
+      .createHmac("sha256", secret)
+      .update(razorpayOrderId + "|" + razorpayPaymentId)
+      .digest("hex");
+
+    if (generated_signature !== razorpaySignature) {
+      console.error("Payment Verification Failed!");
+      
+      // Still log it as failed for security audit
+      await Payment.findOneAndUpdate(
+        { razorpayOrderId },
+        { razorpayPaymentId, razorpaySignature, status: "failed" }
+      );
+
+      return res.status(400).json({ success: false, message: "Invalid payment signature. Verification failed." });
+    }
+
+    // Update the payment record as verified
+    await Payment.findOneAndUpdate(
+      { razorpayOrderId },
+      { razorpayPaymentId, razorpaySignature, status: "verified" }
+    );
+
+    // Upsert pending registration ONLY IF verified
     const pending = await PendingRegistration.findOneAndUpdate(
       { phone },
       { 
@@ -118,23 +144,49 @@ const savePaymentInfo = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    res.status(200).json({ success: true, data: pending });
+    res.status(200).json({ success: true, message: "Payment verified and saved successfully", data: pending });
   } catch (error) {
+    console.error("Save Payment Info Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
 const createOrder = async (req, res) => {
   try {
-    const { amount, planId } = req.body;
+    const { amount, planId, phone } = req.body;
     
+    // Check if there is already a PAID payment or existing user
+    const existingUser = await User.findOne({ phone });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: "User already registered." });
+    }
+
+    const alreadyPaid = await PendingRegistration.findOne({ phone, status: "pending" });
+    if (alreadyPaid) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Payment already confirmed for this number. Please complete registration.",
+        resume: true 
+      });
+    }
+
     const options = {
       amount: amount * 100, // in paise
       currency: "INR",
-      receipt: `receipt_${Date.now()}`,
+      receipt: `receipt_phone_${phone}_${Date.now()}`,
     };
 
     const order = await razorpay.orders.create(options);
+
+    // Track the payment attempt
+    const payment = new Payment({
+      phone,
+      planId,
+      amount,
+      razorpayOrderId: order.id,
+      status: "created"
+    });
+    await payment.save();
     
     res.status(200).json({
       success: true,
@@ -175,13 +227,15 @@ const registerBuilder = async (req, res) => {
     let finalSignature = razorpaySignature;
 
     const pending = await PendingRegistration.findOne({ phone, status: "pending" });
-    if (pending) {
-      finalPlanId = pending.planId;
-      finalAmountPaid = pending.amountPaid;
-      finalOrderId = pending.razorpayOrderId;
-      finalPaymentId = pending.razorpayPaymentId;
-      finalSignature = pending.razorpaySignature;
+    if (!pending) {
+      return res.status(400).json({ success: false, message: "No active payment found for this number. Please pay first." });
     }
+
+    finalPlanId = pending.planId;
+    finalAmountPaid = pending.amountPaid;
+    finalOrderId = pending.razorpayOrderId;
+    finalPaymentId = pending.razorpayPaymentId;
+    finalSignature = pending.razorpaySignature;
 
     // 1. Create User
     const existingUser = await User.findOne({ 
@@ -199,7 +253,7 @@ const registerBuilder = async (req, res) => {
       fullName,
       email,
       phone,
-      password, // Password hashing normally happens in pre-save or controller
+      password: encryptData(password),
       role: "BUILDER",
     });
 
@@ -281,7 +335,7 @@ const extraManualRegister = async (req, res) => {
       fullName,
       email,
       phone,
-      password,
+      password: encryptData(password),
       role: "BUILDER",
     });
 
