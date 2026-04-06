@@ -380,6 +380,25 @@ const extraManualRegister = async (req, res) => {
   }
 };
 
+const getAllBuilders = async (req, res) => {
+  try {
+    const builders = await Builder.find({ isDeleted: false })
+      .populate("userId", "fullName email phone status")
+      .populate("planId", "planName price duration noOfStaff noOfSites noOfWhatsapp")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      status: "Success",
+      count: builders.length,
+      data: builders
+    });
+  } catch (error) {
+    console.error("Get All Builders Error:", error);
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
 module.exports = {
   checkPhoneStatus,
   savePaymentInfo,
@@ -388,4 +407,5 @@ module.exports = {
   extraManualRegister,
   builderLogin,
   getBuilderProfile,
+  getAllBuilders,
 };
