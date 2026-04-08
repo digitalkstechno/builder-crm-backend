@@ -3,6 +3,7 @@ const Builder = require("../model/builder");
 const Plan = require("../model/plan");
 const PendingRegistration = require("../model/pendingRegistration");
 const Payment = require("../model/payment");
+const Staff = require("../model/staff");
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
 
@@ -18,18 +19,9 @@ const builderLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    // Find only with role BUILDER
-    const user = await User.findOne({ email, role: "BUILDER", isDeleted: false });
-    if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        status: "Fail",
-        message: "Only builders can login here" 
-      });
-    }
-
-    const decryptedPassword = decryptData(user.password);
-    if (String(decryptedPassword) !== String(password)) {
+    // Find all active users with this email (might have multiple for different builders now)
+    const users = await User.find({ email, isDeleted: false });
+    if (users.length === 0) {
       return res.status(401).json({ 
         success: false, 
         status: "Fail",
@@ -37,14 +29,66 @@ const builderLogin = async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY);
-    const builder = await Builder.findOne({ userId: user._id });
+    // Iterate and find the one with matching password
+    let validUser = null;
+    for (const user of users) {
+      try {
+        const decryptedPassword = decryptData(user.password);
+        if (String(decryptedPassword) === String(password)) {
+          validUser = user;
+          break;
+        }
+      } catch (err) {
+        // Skip if decryption fails for any reason
+      }
+    }
+
+    if (!validUser) {
+      return res.status(401).json({ 
+        success: false, 
+        status: "Fail",
+        message: "Invalid email or password" 
+      });
+    }
+
+    // Role check: Only BUILDER and STAFF allowed (Admins have their own panel)
+    if (validUser.role !== "BUILDER" && validUser.role !== "STAFF") {
+      return res.status(403).json({
+        success: false,
+        status: "Fail",
+        message: "Admin accounts are not authorized to login here. Please use the Admin Panel."
+      });
+    }
+
+    const token = jwt.sign({ id: validUser._id }, process.env.JWT_SECRET_KEY);
+    
+    // Get builder context
+    let builderData = null;
+    if (validUser.role === "BUILDER") {
+      builderData = await Builder.findOne({ userId: validUser._id });
+    } else if (validUser.role === "STAFF") {
+      // Find the builder this staff belongs to
+      // First try using the scoped builderId on user record (for new users)
+      // Otherwise, fallback to the Staff table (for backward compatibility)
+      let targetBuilderId = validUser.builderId;
+      
+      if (!targetBuilderId) {
+        const staffEntry = await Staff.findOne({ userId: validUser._id });
+        if (staffEntry) {
+          targetBuilderId = staffEntry.builderId;
+        }
+      }
+
+      if (targetBuilderId) {
+        builderData = await Builder.findById(targetBuilderId);
+      }
+    }
 
     res.status(200).json({
       success: true,
       status: "Success",
       message: "Welcome back!",
-      data: { user, builder },
+      data: { user: validUser, builder: builderData },
       token
     });
   } catch (error) {
@@ -56,7 +100,25 @@ const getBuilderProfile = async (req, res) => {
   try {
     const { userId } = req.params;
     const user = await User.findById(userId);
-    const builder = await Builder.findOne({ userId });
+    if (!user) throw new Error("User not found");
+
+    let builder = null;
+    if (user.role === "BUILDER") {
+      builder = await Builder.findOne({ userId });
+    } else if (user.role === "STAFF") {
+      // 1. Try from User record directly (New structure)
+      if (user.builderId) {
+        builder = await Builder.findById(user.builderId);
+      }
+      
+      // 2. Fallback to Staff table (Old structure)
+      if (!builder) {
+        const staffEntry = await Staff.findOne({ userId });
+        if (staffEntry) {
+          builder = await Builder.findById(staffEntry.builderId);
+        }
+      }
+    }
     
     res.status(200).json({
       success: true,
@@ -72,8 +134,8 @@ const checkPhoneStatus = async (req, res) => {
   try {
     const { phone } = req.body;
     
-    // Check if fully registered
-    const existingUser = await User.findOne({ phone });
+    // Check if fully registered as a builder
+    const existingUser = await User.findOne({ phone, builderId: null });
     if (existingUser) {
       return res.status(200).json({ 
         success: true, 
@@ -218,9 +280,9 @@ const registerBuilder = async (req, res) => {
       return res.status(400).json({ success: false, message: "No active payment found for this number. Please pay first." });
     }
 
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }], builderId: null });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: "User with this email or phone already exists." });
+      return res.status(400).json({ success: false, message: "User with this email or phone already exists as a builder." });
     }
 
     const plan = await Plan.findById(pending.planId);
@@ -296,9 +358,9 @@ const extraManualRegister = async (req, res) => {
       amountPaid,
     } = req.body;
 
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }], builderId: null });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: "User already registered." });
+      return res.status(400).json({ success: false, message: "User already registered as a builder." });
     }
 
     const plan = await Plan.findById(planId);
