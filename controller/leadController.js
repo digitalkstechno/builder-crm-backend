@@ -238,25 +238,52 @@ exports.getReminders = async (req, res) => {
       })
       .populate({
         path: 'followupId',
-        select: 'followupDate notes'
+        select: 'followupDate notes leadId'
       })
       .sort({ reminderDate: 1 })
       .skip(skip)
       .limit(limit);
 
-    const formattedReminders = reminders.map(reminder => ({
-      _id: reminder._id,
-      lead: reminder.leadId?.name || 'Unknown Lead',
-      phone: reminder.leadId?.phone || '',
-      followupDate: reminder.followupId?.followupDate?.toISOString().split('T')[0] || '',
-      notes: reminder.followupId?.notes || reminder.message,
-      reminderDate: reminder.reminderDate.toISOString().split('T')[0],
-      reminderTime: reminder.reminderDate.toTimeString().split(' ')[0].substring(0, 5),
-      isSent: reminder.isSent,
-      sentAt: reminder.sentAt,
-      type: 'Followup', // Could be extended for different types
-      priority: reminder.reminderDate < new Date() && !reminder.isSent ? 'High' : 'Medium'
-    }));
+    // Also populate followup.leadId if needed
+    await require("../model/followup").populate(reminders, {
+      path: 'followupId.leadId',
+      select: 'name phone'
+    });
+
+    const formattedReminders = reminders.map(reminder => {
+      // Extract leadId with multiple fallback methods
+      let leadId = null;
+      if (reminder.leadId && typeof reminder.leadId === 'object' && reminder.leadId._id) {
+        // Populated Lead object
+        leadId = reminder.leadId._id.toString();
+      } else if (reminder.leadId && typeof reminder.leadId === 'string') {
+        // Direct ObjectId string
+        leadId = reminder.leadId;
+      } else if (reminder.leadId && reminder.leadId.toString) {
+        // ObjectId object
+        leadId = reminder.leadId.toString();
+      } else if (reminder.followupId && reminder.followupId.leadId) {
+        // Fallback from followup
+        leadId = typeof reminder.followupId.leadId === 'object'
+          ? reminder.followupId.leadId.toString()
+          : reminder.followupId.leadId;
+      }
+
+      return {
+        _id: reminder._id,
+        lead: reminder.leadId?.name || 'Unknown Lead',
+        leadId: leadId,
+        phone: reminder.leadId?.phone || '',
+        followupDate: reminder.followupId?.followupDate?.toISOString().split('T')[0] || '',
+        notes: reminder.followupId?.notes || reminder.message,
+        reminderDate: reminder.reminderDate.toISOString().split('T')[0],
+        reminderTime: reminder.reminderDate.toTimeString().split(' ')[0].substring(0, 5),
+        isSent: reminder.isSent,
+        sentAt: reminder.sentAt,
+        type: 'Followup',
+        priority: reminder.reminderDate < new Date() && !reminder.isSent ? 'High' : 'Medium'
+      };
+    });
 
     return res.status(200).json({
       status: "Success",

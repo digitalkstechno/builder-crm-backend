@@ -293,7 +293,7 @@ exports.getSiteTeamMembersService = async (siteId, builderUserId) => {
 
 // Followup services
 exports.createFollowupService = async (builderUserId, followupData) => {
-  const { leadId, followupDate, notes } = followupData;
+  const { leadId, followupDate, followupTime, notes } = followupData;
 
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
@@ -302,18 +302,21 @@ exports.createFollowupService = async (builderUserId, followupData) => {
   const lead = await Lead.findOne({ _id: leadId, builderId: builder._id, isDeleted: false });
   if (!lead) throw new Error("Lead not found");
 
+  // Combine date and time into a single DateTime
+  const followupDateTime = new Date(`${followupDate}T${followupTime || '09:00'}:00`);
+
   const newFollowup = new Followup({
     builderId: builder._id,
     leadId,
-    followupDate: new Date(followupDate),
+    followupDate: followupDateTime,
     notes,
-    createdBy: builderUserId, // Use the user ID directly
+    createdBy: builderUserId, // Use user ID directly
   });
 
   const savedFollowup = await newFollowup.save();
 
   // Create a reminder for this followup (remind 1 day before)
-  const reminderDate = new Date(followupDate);
+  const reminderDate = new Date(followupDateTime);
   reminderDate.setDate(reminderDate.getDate() - 1);
 
   const reminder = new Reminder({
