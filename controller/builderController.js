@@ -486,7 +486,7 @@ const getAllBuilders = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     let query = { isDeleted: false };
-    
+
     if (search) {
       query.$or = [
         { companyName: { $regex: search, $options: 'i' } },
@@ -518,6 +518,258 @@ const getAllBuilders = async (req, res) => {
   }
 };
 
+// Admin CRUD operations for builders
+const createBuilder = async (req, res) => {
+  try {
+    const { fullName, email, phone, password, companyName, address, planId, amountPaid } = req.body;
+
+    // Phone and email are required for user creation
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({
+        success: false,
+        status: "Fail",
+        message: "Phone number is required"
+      });
+    }
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        success: false,
+        status: "Fail",
+        message: "Email address is required"
+      });
+    }
+
+    // Check if user already exists by email or phone
+    const existingUser = await User.findOne({
+      $or: [{ email: email.trim() }, { phone: phone.trim() }],
+      isDeleted: false
+    });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        status: "Fail",
+        message: "User with this email or phone number already exists"
+      });
+    }
+
+    // Create user first - phone and email are required
+    const userData = {
+      phone: phone.trim(),
+      email: email.trim(),
+      role: "BUILDER",
+      status: "ACTIVE"
+    };
+
+    // Add optional fields if provided
+    if (fullName && fullName.trim()) userData.fullName = fullName.trim();
+    if (password && password.trim()) userData.password = encryptData(password.trim());
+
+    const newUser = new User(userData);
+
+    const savedUser = await newUser.save();
+
+    // Get plan details
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(400).json({
+        success: false,
+        status: "Fail",
+        message: "Invalid plan selected"
+      });
+    }
+
+    // Calculate subscription end date based on plan duration
+    const startDate = new Date();
+    const endDate = calculatePlanEndDate(plan, startDate);
+
+    // Create builder - companyName and address are optional
+    const builderData = {
+      userId: savedUser._id,
+      currentLimits: {
+        noOfStaff: plan.noOfStaff,
+        noOfSites: plan.noOfSites,
+        noOfWhatsapp: plan.noOfWhatsapp,
+      },
+      subscriptions: [{
+        planId: plan._id,
+        planName: plan.planName,
+        startDate: new Date(),
+        endDate,
+        amountPaid: amountPaid || plan.price,
+        noOfStaff: plan.noOfStaff,
+        noOfSites: plan.noOfSites,
+        noOfWhatsapp: plan.noOfWhatsapp,
+        status: "active"
+      }],
+      isActive: true
+    };
+
+    // Add optional fields if provided
+    if (companyName && companyName.trim()) builderData.companyName = companyName.trim();
+    if (address && address.trim()) builderData.address = address.trim();
+
+    const newBuilder = new Builder(builderData);
+
+    const savedBuilder = await newBuilder.save();
+
+    // Populate and return
+    await savedBuilder.populate("userId", "fullName email phone status");
+
+    res.status(201).json({
+      success: true,
+      status: "Success",
+      message: "Builder created successfully",
+      data: savedBuilder
+    });
+  } catch (error) {
+    console.error("Create Builder Error:", error);
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
+const updateBuilder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fullName, email, phone, companyName, address, isActive, planId, amountPaid } = req.body;
+
+    // Find builder
+    const builder = await Builder.findById(id);
+    if (!builder) {
+      return res.status(404).json({
+        success: false,
+        status: "Fail",
+        message: "Builder not found"
+      });
+    }
+
+    // Update user details if provided
+    if (fullName || email || phone) {
+      const updateUserData = {};
+      if (fullName) updateUserData.fullName = fullName;
+      if (email) updateUserData.email = email;
+      if (phone) updateUserData.phone = phone;
+
+      await User.findByIdAndUpdate(builder.userId, updateUserData);
+    }
+
+    // Update builder details
+    const updateBuilderData = {};
+    if (companyName !== undefined) updateBuilderData.companyName = companyName;
+    if (address !== undefined) updateBuilderData.address = address;
+    if (isActive !== undefined) updateBuilderData.isActive = isActive;
+
+    // If plan is being updated, update subscription
+    if (planId) {
+      const plan = await Plan.findById(planId);
+      if (!plan) {
+        return res.status(400).json({
+          success: false,
+          status: "Fail",
+          message: "Invalid plan selected"
+        });
+      }
+
+      // Calculate new subscription end date based on plan duration
+      const startDate = new Date();
+      const endDate = calculatePlanEndDate(plan, startDate);
+
+      // Update current limits
+      updateBuilderData.currentLimits = {
+        noOfStaff: plan.noOfStaff,
+        noOfSites: plan.noOfSites,
+        noOfWhatsapp: plan.noOfWhatsapp,
+      };
+
+      // Add new subscription
+      updateBuilderData.$push = {
+        subscriptions: {
+          planId: plan._id,
+          planName: plan.planName,
+          startDate: new Date(),
+          endDate,
+          amountPaid: amountPaid || plan.price,
+          noOfStaff: plan.noOfStaff,
+          noOfSites: plan.noOfSites,
+          noOfWhatsapp: plan.noOfWhatsapp,
+          status: "active"
+        }
+      };
+    }
+
+    const updatedBuilder = await Builder.findByIdAndUpdate(id, updateBuilderData, { new: true })
+      .populate("userId", "fullName email phone status");
+
+    res.status(200).json({
+      success: true,
+      status: "Success",
+      message: "Builder updated successfully",
+      data: updatedBuilder
+    });
+  } catch (error) {
+    console.error("Update Builder Error:", error);
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
+const deleteBuilder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find builder
+    const builder = await Builder.findById(id);
+    if (!builder) {
+      return res.status(404).json({
+        success: false,
+        status: "Fail",
+        message: "Builder not found"
+      });
+    }
+
+    // Soft delete builder
+    await Builder.findByIdAndUpdate(id, { isDeleted: true });
+
+    // Soft delete associated user
+    await User.findByIdAndUpdate(builder.userId, { isDeleted: true });
+
+    res.status(200).json({
+      success: true,
+      status: "Success",
+      message: "Builder deleted successfully"
+    });
+  } catch (error) {
+    console.error("Delete Builder Error:", error);
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
+const getBuilderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const builder = await Builder.findById(id)
+      .populate("userId", "fullName email phone status")
+      .populate("subscriptions.planId", "name price");
+
+    if (!builder) {
+      return res.status(404).json({
+        success: false,
+        status: "Fail",
+        message: "Builder not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      status: "Success",
+      data: builder
+    });
+  } catch (error) {
+    console.error("Get Builder By ID Error:", error);
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
 module.exports = {
   checkPhoneStatus,
   savePaymentInfo,
@@ -527,5 +779,9 @@ module.exports = {
   builderLogin,
   getBuilderProfile,
   getAllBuilders,
+  createBuilder,
+  updateBuilder,
+  deleteBuilder,
+  getBuilderById,
   renewSubscription,
 };

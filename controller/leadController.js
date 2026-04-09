@@ -32,8 +32,11 @@ exports.fetchBuilderLeads = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || "";
+    const status = req.query.status;
+    const source = req.query.source;
+    const agent = req.query.agent;
 
-    const { totalLeads, leadData } = await fetchBuilderLeadsService(req.user.id, { page, limit, search });
+    const { totalLeads, leadData } = await fetchBuilderLeadsService(req.user.id, { page, limit, search, status, source, agent });
 
     return res.status(200).json({
       status: "Success",
@@ -204,7 +207,9 @@ exports.getReminders = async (req, res) => {
     if (!builder) throw new Error("Builder not found");
 
     const { status, page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+    const numericLimit = parseInt(limit);
+    const numericPage = parseInt(page);
+    const skip = (numericPage - 1) * numericLimit;
 
     let query = {
       builderId: builder._id,
@@ -212,76 +217,130 @@ exports.getReminders = async (req, res) => {
       isDeleted: false
     };
 
-    // Filter by status
+    // Use aggregation pipeline for proper filtering by followup date
+    let matchConditions = {
+      builderId: builder._id,
+      isActive: true,
+      isDeleted: false
+    };
+
     if (status === 'missed') {
-      query.reminderDate = { $lt: new Date() };
-      query.isSent = false;
+      // Reminders for followups that are overdue (past due date)
+      matchConditions.isSent = false;
+    } else if (status === 'today') {
+      // Reminders for followups due today
+      matchConditions.isSent = false;
+    } else if (status === 'upcoming') {
+      // Reminders for future followups
+      matchConditions.isSent = false;
+    } else if (status === 'completed') {
+      matchConditions.isSent = true;
+    }
+
+    // Build aggregation pipeline
+    let pipeline = [
+      {
+        $match: matchConditions
+      },
+      {
+        $lookup: {
+          from: 'followups',
+          localField: 'followupId',
+          foreignField: '_id',
+          as: 'followup'
+        }
+      },
+      {
+        $unwind: '$followup'
+      }
+    ];
+
+    // Add date filtering based on followup.followupDate
+    if (status === 'missed') {
+      pipeline.push({
+        $match: {
+          'followup.followupDate': { $lt: new Date() }
+        }
+      });
     } else if (status === 'today') {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
-      query.reminderDate = { $gte: today, $lt: tomorrow };
-      query.isSent = false;
+
+      pipeline.push({
+        $match: {
+          'followup.followupDate': { $gte: today, $lt: tomorrow }
+        }
+      });
     } else if (status === 'upcoming') {
-      query.reminderDate = { $gt: new Date() };
-      query.isSent = false;
-    } else if (status === 'completed') {
-      query.isSent = true;
+      pipeline.push({
+        $match: {
+          'followup.followupDate': { $gt: new Date() }
+        }
+      });
     }
 
-    const totalReminders = await require("../model/reminder").countDocuments(query);
-    const reminders = await require("../model/reminder").find(query)
-      .populate({
-        path: 'leadId',
-        select: 'name phone'
-      })
-      .populate({
-        path: 'followupId',
-        select: 'followupDate notes leadId'
-      })
-      .sort({ reminderDate: 1 })
-      .skip(skip)
-      .limit(limit);
+    // Add lookups for lead data
+    pipeline.push(
+      {
+        $lookup: {
+          from: 'leads',
+          localField: 'leadId',
+          foreignField: '_id',
+          as: 'lead'
+        }
+      },
+      {
+        $unwind: { path: '$lead', preserveNullAndEmptyArrays: true }
+      },
+      {
+        $lookup: {
+          from: 'leads',
+          localField: 'followup.leadId',
+          foreignField: '_id',
+          as: 'followupLead'
+        }
+      },
+      {
+        $unwind: { path: '$followupLead', preserveNullAndEmptyArrays: true }
+      },
+      {
+        $sort: { 'followup.followupDate': 1 }
+      },
+      {
+        $skip: skip
+      },
+      {
+        $limit: numericLimit
+      }
+    );
 
-    // Also populate followup.leadId if needed
-    await require("../model/followup").populate(reminders, {
-      path: 'followupId.leadId',
-      select: 'name phone'
-    });
+    const totalReminders = await require("../model/reminder").aggregate([
+      ...pipeline.slice(0, -3), // Remove skip, limit, and sort for count
+      { $count: "total" }
+    ]).then(result => result[0]?.total || 0);
+
+    const reminders = await require("../model/reminder").aggregate(pipeline);
 
     const formattedReminders = reminders.map(reminder => {
-      // Extract leadId with multiple fallback methods
-      let leadId = null;
-      if (reminder.leadId && typeof reminder.leadId === 'object' && reminder.leadId._id) {
-        // Populated Lead object
-        leadId = reminder.leadId._id.toString();
-      } else if (reminder.leadId && typeof reminder.leadId === 'string') {
-        // Direct ObjectId string
-        leadId = reminder.leadId;
-      } else if (reminder.leadId && reminder.leadId.toString) {
-        // ObjectId object
-        leadId = reminder.leadId.toString();
-      } else if (reminder.followupId && reminder.followupId.leadId) {
-        // Fallback from followup
-        leadId = typeof reminder.followupId.leadId === 'object'
-          ? reminder.followupId.leadId.toString()
-          : reminder.followupId.leadId;
-      }
+      // Extract lead info - aggregation returns arrays
+      const lead = reminder.lead || reminder.followupLead;
+      const followup = reminder.followup;
 
       return {
         _id: reminder._id,
-        lead: reminder.leadId?.name || 'Unknown Lead',
-        leadId: leadId,
-        phone: reminder.leadId?.phone || '',
-        followupDate: reminder.followupId?.followupDate?.toISOString().split('T')[0] || '',
-        notes: reminder.followupId?.notes || reminder.message,
+        lead: lead?.name || 'Unknown Lead',
+        leadId: lead?._id?.toString() || followup?.leadId?.toString(),
+        phone: lead?.phone || '',
+        followupDate: followup?.followupDate?.toISOString().split('T')[0] || '',
+        notes: followup?.notes || reminder.message,
         reminderDate: reminder.reminderDate.toISOString().split('T')[0],
         reminderTime: reminder.reminderDate.toTimeString().split(' ')[0].substring(0, 5),
         isSent: reminder.isSent,
         sentAt: reminder.sentAt,
         type: 'Followup',
-        priority: reminder.reminderDate < new Date() && !reminder.isSent ? 'High' : 'Medium'
+        priority: followup?.followupDate < new Date() && !reminder.isSent ? 'High' : 'Medium'
       };
     });
 
@@ -290,9 +349,9 @@ exports.getReminders = async (req, res) => {
       message: "Reminders fetched successfully",
       pagination: {
         totalRecords: totalReminders,
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(totalReminders / limit),
-        limit: parseInt(limit)
+        currentPage: numericPage,
+        totalPages: Math.ceil(totalReminders / numericLimit),
+        limit: numericLimit
       },
       data: formattedReminders
     });

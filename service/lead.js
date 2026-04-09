@@ -66,19 +66,40 @@ exports.createLeadService = async (builderUserId, leadData) => {
   return formattedLead;
 };
 
-exports.fetchBuilderLeadsService = async (builderUserId, { page, limit, search }) => {
+exports.fetchBuilderLeadsService = async (builderUserId, { page, limit, search, status, source, agent }) => {
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
 
   const skip = (page - 1) * limit;
 
   let query = { builderId: builder._id, isDeleted: false };
+
+  // Search filter
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: "i" } },
       { phone: { $regex: search, $options: "i" } },
       { siteName: { $regex: search, $options: "i" } }
     ];
+  }
+
+  // Status filter
+  if (status && status !== 'all') {
+    query.stageId = status;
+  }
+
+  // Source filter
+  if (source && source !== 'all') {
+    query.source = source;
+  }
+
+  // Agent filter
+  if (agent && agent !== 'all') {
+    if (agent === 'unassigned') {
+      query.agentId = null;
+    } else {
+      query.agentId = agent;
+    }
   }
 
   const totalLeads = await Lead.countDocuments(query);
