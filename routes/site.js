@@ -8,8 +8,10 @@ router.use(authMiddleware);
 
 router.post("/", upload.array('images', 10), siteController.createSite);
 router.get("/", siteController.fetchBuilderSites);
+router.get("/admin/all", siteController.getAllSitesForAdmin);
 router.get("/:id", siteController.getSiteById);
 router.put("/:id", upload.array('images', 10), siteController.updateSite);
+router.patch("/:id/status", siteController.updateSiteStatus);
 router.delete("/:id", siteController.deleteSite);
 
 module.exports = router;
