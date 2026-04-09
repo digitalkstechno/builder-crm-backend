@@ -9,6 +9,12 @@ exports.createSiteService = async (builderUserId, siteData) => {
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
 
+  // Check site limit
+  const currentSiteCount = await Site.countDocuments({ builderId: builder._id, isDeleted: false });
+  if (currentSiteCount >= builder.currentLimits.noOfSites) {
+    throw new Error(`Site limit exceeded. You can only create ${builder.currentLimits.noOfSites} sites.`);
+  }
+
   const newSite = new Site({
     builderId: builder._id,
     name,
