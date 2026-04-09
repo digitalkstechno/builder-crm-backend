@@ -13,5 +13,6 @@ router.get("/:id", siteController.getSiteById);
 router.put("/:id", upload.array('images', 10), siteController.updateSite);
 router.patch("/:id/status", siteController.updateSiteStatus);
 router.delete("/:id", siteController.deleteSite);
+router.get("/whatsapp/:id", siteController.getSiteByWhatsappId);
 
 module.exports = router;

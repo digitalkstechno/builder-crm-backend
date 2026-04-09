@@ -220,3 +220,10 @@ exports.updateSiteStatusService = async (siteId, statusData) => {
 
   return updatedSite;
 };
+
+exports.getSiteByWhatsappIdService = async (whatsappId) => {
+  const site = await Site.findOne({ whatsappStatus:whatsappId, isDeleted: false });
+  if (!site) throw new Error("Site not found");
+
+  return site;
+};

@@ -142,3 +142,16 @@ exports.getSiteById = async (req, res) => {
     return res.status(404).json({ status: "Fail", message: error.message });
   }
 };
+
+exports.getSiteByWhatsappId = async (req, res) => {
+  try {
+    const site = await getSiteByWhatsappIdService(req.params.id, req.user.id);
+    return res.status(200).json({
+      status: "Success",
+      message: "Site fetched successfully",
+      data: site
+    });
+  } catch (error) {
+    return res.status(404).json({ status: "Fail", message: error.message });
+  }
+};
