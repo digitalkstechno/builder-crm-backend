@@ -16,6 +16,17 @@ const SiteSchema = new mongoose.Schema(
       enum: ["Planning", "Active"],
       default: "Planning",
     },
+    whatsappStatus: {
+      type: String,
+      enum: ["connected", "disconnected"],
+      default: "disconnected",
+    },
+    chatbotStatus: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "inactive",
+    },
+
     images: [{ type: String }],
     builderId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -24,6 +35,7 @@ const SiteSchema = new mongoose.Schema(
     },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+    deleteRequested: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

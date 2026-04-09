@@ -66,6 +66,33 @@ exports.deleteSite = async (req, res) => {
   }
 };
 
+exports.getAllSitesForAdmin = async (req, res) => {
+  try {
+    const { getAllSitesForAdminService } = require("../service/site");
+    const sites = await getAllSitesForAdminService();
+    return res.status(200).json({
+      status: "Success",
+      data: sites,
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
+exports.updateSiteStatus = async (req, res) => {
+  try {
+    const { updateSiteStatusService } = require("../service/site");
+    const updatedSite = await updateSiteStatusService(req.params.id, req.body);
+    return res.status(200).json({
+      status: "Success",
+      message: "Site status updated successfully",
+      data: updatedSite,
+    });
+  } catch (error) {
+    return res.status(400).json({ status: "Fail", message: error.message });
+  }
+};
+
 exports.updateSite = async (req, res) => {
   try {
     // Handle uploaded images

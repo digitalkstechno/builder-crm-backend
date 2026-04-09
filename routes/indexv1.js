@@ -11,5 +11,6 @@ router.use("/team", require("./team"));
 router.use("/site", require("./site"));
 router.use("/lead-status", require("./leadStatus"));
 router.use("/whatsapp", require("./whatsapp"));
+router.use("/notification", require("./notification"));
 
 module.exports = router;

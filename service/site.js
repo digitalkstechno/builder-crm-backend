@@ -2,6 +2,9 @@ const Site = require("../model/site");
 const Builder = require("../model/builder");
 const fs = require("fs");
 const path = require("path");
+const { getIO } = require("../utils/socket");
+const Notification = require("../model/notification");
+
 
 exports.createSiteService = async (builderUserId, siteData) => {
   const { name, city, area, description, propertyTypes, priceRange, whatsappNumber, staff, teamId, status, images } = siteData;
@@ -31,6 +34,32 @@ exports.createSiteService = async (builderUserId, siteData) => {
   });
 
   await newSite.save();
+
+  // If whatsappNumber is added, notify admin
+  if (whatsappNumber) {
+    const notification = new Notification({
+      title: "New Site WhatsApp Added",
+      message: `A new site "${name}" has been created with WhatsApp number ${whatsappNumber}.`,
+      type: "site_added",
+      siteId: newSite._id,
+      builderId: builder._id,
+    });
+    await notification.save();
+
+    const io = getIO();
+    const populatedSite = await Site.findById(newSite._id).populate("builderId", "companyName");
+    io.emit("admin_notification", {
+      notification,
+      site: populatedSite,
+    });
+    
+    // Also emit specifically for the whatsapp page update
+    io.emit("whatsapp_page_update", {
+      action: "add",
+      site: populatedSite,
+    });
+  }
+
   return newSite;
 };
 
@@ -40,7 +69,7 @@ exports.fetchBuilderSitesService = async (builderUserId, { page, limit, search }
 
   const skip = (page - 1) * limit;
 
-  let query = { builderId: builder._id, isDeleted: false };
+  let query = { builderId: builder._id, isDeleted: false, deleteRequested: false };
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: "i" } },
@@ -65,18 +94,32 @@ exports.deleteSiteService = async (siteId, builderUserId) => {
   const site = await Site.findOne({ _id: siteId, builderId: builder._id });
   if (!site) throw new Error("Site not found");
 
-  // Delete associated images
-  if (site.images && site.images.length > 0) {
-    site.images.forEach((imagePath) => {
-      const fullPath = path.join(__dirname, '..', 'public', imagePath);
-      fs.unlink(fullPath, (err) => {
-        if (err) console.error('Error deleting image:', err);
-      });
-    });
-  }
-
-  site.isDeleted = true;
+  site.deleteRequested = true;
   await site.save();
+
+  const populatedSite = await Site.findById(site._id).populate("builderId", "companyName");
+  const { getIO } = require("../utils/socket");
+  const io = getIO();
+
+  // Create notification for admin
+  const notification = new Notification({
+    title: "Site Delete Requested",
+    message: `Site "${site.name}" deletion has been requested by ${builder.companyName}. Review and Unlink WhatsApp in Hub.`,
+    type: "site_deleted",
+    builderId: builder._id,
+    siteId: site._id
+  });
+  await notification.save();
+
+  io.emit("admin_notification", {
+    notification,
+    site: populatedSite,
+  });
+
+  io.emit("whatsapp_page_update", {
+    action: "update",
+    site: populatedSite,
+  });
 };
 
 exports.updateSiteService = async (siteId, builderUserId, updateData, keptImages = []) => {
@@ -105,6 +148,41 @@ exports.updateSiteService = async (siteId, builderUserId, updateData, keptImages
     { new: true }
   );
 
+  // Check if whatsappNumber was changed or added
+  if (updateData.whatsappNumber && updateData.whatsappNumber !== site.whatsappNumber) {
+    const notification = new Notification({
+      title: "Site WhatsApp Updated",
+      message: `Site "${updatedSite.name}" updated its WhatsApp number to ${updateData.whatsappNumber}.`,
+      type: "whatsapp_updated",
+      siteId: updatedSite._id,
+      builderId: builder._id,
+    });
+    await notification.save();
+
+    const io = getIO();
+    const populatedSite = await Site.findById(updatedSite._id).populate("builderId", "companyName");
+    io.emit("admin_notification", {
+      notification,
+      site: populatedSite,
+    });
+
+    // Also emit specifically for the whatsapp page update
+    io.emit("whatsapp_page_update", {
+      action: "update",
+      site: populatedSite,
+    });
+  }
+
+  // Emit to builder specifically if status changed (for real-time table update)
+  if (updateData.whatsappStatus || updateData.chatbotStatus) {
+    const io = getIO();
+    io.emit("site_status_update", {
+      siteId: updatedSite._id,
+      whatsappStatus: updatedSite.whatsappStatus,
+      chatbotStatus: updatedSite.chatbotStatus,
+    });
+  }
+
   return updatedSite;
 };
 
@@ -116,4 +194,29 @@ exports.getSiteByIdService = async (siteId, builderUserId) => {
   if (!site) throw new Error("Site not found");
 
   return site;
+};
+
+exports.getAllSitesForAdminService = async () => {
+  return await Site.find({})
+    .populate("builderId", "companyName")
+    .sort({ createdAt: -1 });
+};
+
+exports.updateSiteStatusService = async (siteId, statusData) => {
+  const updatedSite = await Site.findByIdAndUpdate(
+    siteId,
+    { $set: statusData },
+    { new: true }
+  ).populate("builderId", "companyName");
+
+  if (!updatedSite) throw new Error("Site not found");
+
+  const io = getIO();
+  io.emit("site_status_update", {
+    siteId: updatedSite._id,
+    whatsappStatus: updatedSite.whatsappStatus,
+    chatbotStatus: updatedSite.chatbotStatus,
+  });
+
+  return updatedSite;
 };
