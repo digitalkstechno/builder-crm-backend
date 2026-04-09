@@ -15,4 +15,10 @@ router.get("/:id", leadController.getLeadById);
 router.put("/:id", leadController.updateLead);
 router.delete("/:id", leadController.deleteLead);
 
+// Followup routes
+router.post("/followup", leadController.createFollowup);
+router.get("/:leadId/followups", leadController.getLeadFollowups);
+router.put("/followup/:id", leadController.updateFollowup);
+router.delete("/followup/:id", leadController.deleteFollowup);
+
 module.exports = router;

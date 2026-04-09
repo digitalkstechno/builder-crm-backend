@@ -12,5 +12,6 @@ router.use("/site", require("./site"));
 router.use("/lead", require("./lead"));
 router.use("/lead-status", require("./leadStatus"));
 router.use("/whatsapp", require("./whatsapp"));
+router.use("/reminders", require("./reminders"));
 
 module.exports = router;

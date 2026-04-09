@@ -3,6 +3,8 @@ const Builder = require("../model/builder");
 const LeadStatus = require("../model/leadStatus");
 const Staff = require("../model/staff");
 const Site = require("../model/site");
+const Followup = require("../model/followup");
+const Reminder = require("../model/reminder");
 
 exports.createLeadService = async (builderUserId, leadData) => {
   const { name, phone, siteId, source, budget, stageId, agentId, notes } = leadData;
@@ -287,4 +289,114 @@ exports.getSiteTeamMembersService = async (siteId, builderUserId) => {
   }
 
   return { leader, members };
+};
+
+// Followup services
+exports.createFollowupService = async (builderUserId, followupData) => {
+  const { leadId, followupDate, notes } = followupData;
+
+  const builder = await Builder.findOne({ userId: builderUserId });
+  if (!builder) throw new Error("Builder not found");
+
+  // Verify lead belongs to builder
+  const lead = await Lead.findOne({ _id: leadId, builderId: builder._id, isDeleted: false });
+  if (!lead) throw new Error("Lead not found");
+
+  const newFollowup = new Followup({
+    builderId: builder._id,
+    leadId,
+    followupDate: new Date(followupDate),
+    notes,
+    createdBy: builderUserId, // Use the user ID directly
+  });
+
+  const savedFollowup = await newFollowup.save();
+
+  // Create a reminder for this followup (remind 1 day before)
+  const reminderDate = new Date(followupDate);
+  reminderDate.setDate(reminderDate.getDate() - 1);
+
+  const reminder = new Reminder({
+    builderId: builder._id,
+    leadId,
+    followupId: savedFollowup._id,
+    reminderDate,
+    message: `Followup reminder for ${lead.name} - ${notes}`,
+  });
+
+  await reminder.save();
+
+  return savedFollowup;
+};
+
+exports.getLeadFollowupsService = async (leadId, builderUserId) => {
+  const builder = await Builder.findOne({ userId: builderUserId });
+  if (!builder) throw new Error("Builder not found");
+
+  // Verify lead belongs to builder
+  const lead = await Lead.findOne({ _id: leadId, builderId: builder._id, isDeleted: false });
+  if (!lead) throw new Error("Lead not found");
+
+  const followups = await Followup.find({
+    leadId,
+    builderId: builder._id,
+    isDeleted: false
+  }).populate('createdBy', 'fullName')
+    .sort({ followupDate: -1 });
+
+  // Format followups with creator names
+  const formattedFollowups = followups.map((followup) => ({
+    _id: followup._id,
+    followupDate: followup.followupDate.toISOString().split('T')[0],
+    notes: followup.notes,
+    isCompleted: followup.isCompleted,
+    completedAt: followup.completedAt,
+    createdBy: followup.createdBy ? followup.createdBy.fullName : 'Unknown',
+    createdAt: followup.createdAt.toISOString().split('T')[0],
+  }));
+
+  return formattedFollowups;
+};
+
+exports.updateFollowupService = async (followupId, builderUserId, updateData) => {
+  const builder = await Builder.findOne({ userId: builderUserId });
+  if (!builder) throw new Error("Builder not found");
+
+  const followup = await Followup.findOne({
+    _id: followupId,
+    builderId: builder._id,
+    isDeleted: false
+  });
+
+  if (!followup) throw new Error("Followup not found");
+
+  const updatedFollowup = await Followup.findByIdAndUpdate(
+    followupId,
+    { $set: updateData },
+    { new: true }
+  ).populate('createdBy', 'userId');
+
+  return updatedFollowup;
+};
+
+exports.deleteFollowupService = async (followupId, builderUserId) => {
+  const builder = await Builder.findOne({ userId: builderUserId });
+  if (!builder) throw new Error("Builder not found");
+
+  const followup = await Followup.findOne({
+    _id: followupId,
+    builderId: builder._id,
+    isDeleted: false
+  });
+
+  if (!followup) throw new Error("Followup not found");
+
+  followup.isDeleted = true;
+  await followup.save();
+
+  // Also mark related reminders as inactive
+  await Reminder.updateMany(
+    { followupId, builderId: builder._id },
+    { isActive: false }
+  );
 };
