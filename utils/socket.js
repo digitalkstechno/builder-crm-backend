@@ -11,17 +11,20 @@ module.exports = {
       },
     });
     
-    console.log("Socket.io initialized with path: /api/socket.io");
+    console.log("------------------------------------------");
+    console.log("SOCKET.IO SERVER INITIALIZED");
+    console.log("------------------------------------------");
     
     io.on("connection", (socket) => {
-      console.log(`[Socket] Client connected: ${socket.id} (Total: ${io.engine.clientsCount})`);
+      console.log(`>>> NEW CONNECTION: ${socket.id}`);
+      console.log(`>>> Total clients: ${io.engine.clientsCount}`);
       
       socket.on("error", (err) => {
-        console.error(`[Socket] Error for ${socket.id}:`, err);
+        console.error(`!!! Socket Error [${socket.id}]:`, err);
       });
       
-      socket.on("disconnect", () => {
-        console.log("Client disconnected:", socket.id);
+      socket.on("disconnect", (reason) => {
+        console.log(`<<< DISCONNECTED: ${socket.id} (Reason: ${reason})`);
       });
     });
     
