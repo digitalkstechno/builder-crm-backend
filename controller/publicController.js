@@ -7,7 +7,17 @@ const PropertyType = require("../model/propertyType");
 const Budget = require("../model/budget");
 const Team = require("../model/team");
 const Staff = require("../model/staff");
+const LeadStatus = require("../model/leadStatus");
 const mongoose = require("mongoose");
+
+const getDefaultStage = async (builderId) => {
+  const status = await LeadStatus.findOne(
+    { builderId, isDeleted: false },
+    "_id name",
+    { sort: { order: 1 } }
+  );
+  return status;
+};
 
 const getSiteById = async (req, res) => {
   try {
@@ -142,6 +152,14 @@ const createPublicLead = async (req, res) => {
             }
           }
         }
+      }
+    }
+
+    if (builderId) {
+      const defaultStage = await getDefaultStage(builderId);
+      if (defaultStage) {
+        leadData.stageId = defaultStage._id;
+        leadData.stageName = defaultStage.name;
       }
     }
 
@@ -338,8 +356,78 @@ const createPublicLeadWithDetails = async (req, res) => {
       }
     }
 
+    const defaultStage = await getDefaultStage(builderId);
+    if (defaultStage) {
+      leadData.stageId = defaultStage._id;
+      leadData.stageName = defaultStage.name;
+    }
+
     const lead = await Lead.create(leadData);
     return res.status(201).json({ status: "Success", data: lead });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
+const updatePublicLeadWithDetails = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Basic ")) {
+      return res.status(401).json({ status: "Fail", message: "Unauthorized" });
+    }
+
+    const base64 = authHeader.split(" ")[1];
+    const [username, password] = Buffer.from(base64, "base64").toString().split(":");
+
+    if (username !== process.env.BASIC_AUTH_USER || password !== process.env.BASIC_AUTH_PASS) {
+      return res.status(401).json({ status: "Fail", message: "Invalid credentials" });
+    }
+
+    const { builderId, leadId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(builderId))
+      return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
+    if (!mongoose.Types.ObjectId.isValid(leadId))
+      return res.status(400).json({ status: "Fail", message: "Invalid leadId" });
+
+    const { siteId, requirementType, propertyType, budget, city, area } = req.body;
+
+    if (siteId && !mongoose.Types.ObjectId.isValid(siteId))
+      return res.status(400).json({ status: "Fail", message: "Invalid siteId" });
+
+    const updateData = {
+      ...(budget && { budget }),
+      ...(requirementType && mongoose.Types.ObjectId.isValid(requirementType) && { requirementType }),
+      ...(propertyType && mongoose.Types.ObjectId.isValid(propertyType) && { propertyType }),
+    };
+
+    if (siteId) {
+      const site = await Site.findById(siteId, "name teamId");
+      if (site) {
+        updateData.siteId = siteId;
+        updateData.siteName = site.name;
+        if (site.teamId) {
+          const team = await Team.findOne({ _id: site.teamId, isDeleted: false }, "leaderId");
+          if (team && team.leaderId) {
+            const leaderStaff = await Staff.findById(team.leaderId, "userId");
+            if (leaderStaff) {
+              const leaderUser = await User.findById(leaderStaff.userId, "fullName");
+              updateData.agentId = team.leaderId;
+              updateData.agentName = leaderUser ? leaderUser.fullName : null;
+            }
+          }
+        }
+      }
+    }
+
+    const lead = await Lead.findOneAndUpdate(
+      { _id: leadId, builderId, isDeleted: false },
+      updateData,
+      { new: true }
+    );
+
+    if (!lead) return res.status(404).json({ status: "Fail", message: "Lead not found" });
+
+    return res.status(200).json({ status: "Success", data: lead });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
@@ -357,4 +445,5 @@ module.exports = {
   getBuilderSites,
   getBuilderPublicProfile,
   createPublicLeadWithDetails,
+  updatePublicLeadWithDetails,
 };
