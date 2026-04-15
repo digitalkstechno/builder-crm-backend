@@ -2,6 +2,7 @@ var express = require("express");
 var router = express.Router();
 
 router.use("/health", require("./health"));
+router.use("/public", require("./public"));
 router.use("/user", require("./user"));
 router.use("/plan", require("./plan"));
 router.use("/builder", require("./builder"));
@@ -14,5 +15,9 @@ router.use("/lead-status", require("./leadStatus"));
 router.use("/whatsapp", require("./whatsapp"));
 router.use("/reminders", require("./reminders"));
 router.use("/notification", require("./notification"));
+router.use("/requirement-type", require("./requirementType"));
+router.use("/property-type", require("./propertyType"));
+router.use("/city-area", require("./cityArea"));
+router.use("/budget", require("./budget"));
 
 module.exports = router;

@@ -4,10 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const { getIO } = require("../utils/socket");
 const Notification = require("../model/notification");
+const mongoose = require("mongoose");
 
 
 exports.createSiteService = async (builderUserId, siteData) => {
-  const { name, city, area, description, propertyTypes, priceRange, whatsappNumber, staff, teamId, status, images } = siteData;
+  const { name, city, area, description, propertyTypes, requirementTypes, budgets, priceRange, whatsappNumber, staff, teamId, status, images } = siteData;
 
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
@@ -24,7 +25,9 @@ exports.createSiteService = async (builderUserId, siteData) => {
     city,
     area,
     description,
-    propertyTypes,
+    propertyTypes: (propertyTypes || []).map(id => new mongoose.Types.ObjectId(id)),
+    requirementTypes: (requirementTypes || []).map(id => new mongoose.Types.ObjectId(id)),
+    budgets: (budgets || []).map(id => new mongoose.Types.ObjectId(id)),
     priceRange,
     whatsappNumber,
     staff,
@@ -82,7 +85,10 @@ exports.fetchBuilderSitesService = async (builderUserId, { page, limit, search }
   const siteData = await Site.find(query)
     .skip(skip)
     .limit(limit)
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .populate('requirementTypes', 'name')
+    .populate('propertyTypes', 'name')
+    .populate('budgets', 'label minAmount maxAmount');
 
   return { totalSites, siteData };
 };
@@ -144,9 +150,14 @@ exports.updateSiteService = async (siteId, builderUserId, updateData, keptImages
 
   const updatedSite = await Site.findByIdAndUpdate(
     siteId,
-    { $set: updateData },
+    { $set: { 
+      ...updateData, 
+      propertyTypes: (updateData.propertyTypes || []).map(id => new mongoose.Types.ObjectId(id)),
+      requirementTypes: (updateData.requirementTypes || []).map(id => new mongoose.Types.ObjectId(id)),
+      budgets: (updateData.budgets || []).map(id => new mongoose.Types.ObjectId(id)),
+    } },
     { new: true }
-  );
+  ).populate('requirementTypes', 'name').populate('propertyTypes', 'name').populate('budgets', 'label minAmount maxAmount');
 
   // Check if whatsappNumber was changed or added
   if (updateData.whatsappNumber && updateData.whatsappNumber !== site.whatsappNumber) {
@@ -190,7 +201,10 @@ exports.getSiteByIdService = async (siteId, builderUserId) => {
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
 
-  const site = await Site.findOne({ _id: siteId, builderId: builder._id, isDeleted: false });
+  const site = await Site.findOne({ _id: siteId, builderId: builder._id, isDeleted: false })
+    .populate('requirementTypes', 'name')
+    .populate('propertyTypes', 'name')
+    .populate('budgets', 'label minAmount maxAmount');
   if (!site) throw new Error("Site not found");
 
   return site;

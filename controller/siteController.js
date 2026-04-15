@@ -14,8 +14,28 @@ exports.createSite = async (req, res) => {
       imageUrls = req.files.map(file => `/uploads/${file.filename}`);
     }
 
+    const rtRaw = req.body['requirementTypes'];
+    const requirementTypes = rtRaw
+      ? Array.isArray(rtRaw) ? rtRaw : [rtRaw]
+      : [];
+
+    const ptRaw = req.body['propertyTypes'];
+    const propertyTypes = ptRaw
+      ? Array.isArray(ptRaw) ? ptRaw : [ptRaw]
+      : [];
+
+    const budgetsRaw = req.body['budgets'];
+    const budgets = budgetsRaw
+      ? Array.isArray(budgetsRaw) ? budgetsRaw : [budgetsRaw]
+      : [];
+
+    const { requirementTypes: _rIgnore, propertyTypes: _pIgnore, ...restBody } = req.body;
+
     const siteData = {
-      ...req.body,
+      ...restBody,
+      requirementTypes,
+      propertyTypes,
+      budgets,
       images: imageUrls
     };
 
@@ -111,13 +131,30 @@ exports.updateSite = async (req, res) => {
       }
     }
 
+    const rtRaw = req.body['requirementTypes'];
+    const requirementTypes = rtRaw
+      ? Array.isArray(rtRaw) ? rtRaw : [rtRaw]
+      : [];
+
+    const ptRaw = req.body['propertyTypes'];
+    const propertyTypes = ptRaw
+      ? Array.isArray(ptRaw) ? ptRaw : [ptRaw]
+      : [];
+
+    const budgetsRaw = req.body['budgets'];
+    const budgets = budgetsRaw
+      ? Array.isArray(budgetsRaw) ? budgetsRaw : [budgetsRaw]
+      : [];
+
+    const { requirementTypes: _rIgnore, propertyTypes: _pIgnore, budgets: _bIgnore, keptImages: _ki, ...restBody } = req.body;
+
     const updateData = {
-      ...req.body,
+      ...restBody,
+      requirementTypes,
+      propertyTypes,
+      budgets,
       images: [...keptImages, ...newImageUrls]
     };
-
-    // Remove keptImages from updateData as it's not a field in the model
-    delete updateData.keptImages;
 
     const updatedSite = await updateSiteService(req.params.id, req.user.id, updateData, keptImages);
     return res.status(200).json({
