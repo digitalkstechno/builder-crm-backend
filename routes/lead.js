@@ -7,6 +7,7 @@ router.use(authMiddleware);
 
 router.post("/", leadController.createLead);
 router.get("/", leadController.fetchBuilderLeads);
+router.get("/today-counts", leadController.getTodayCounts);
 router.get("/statuses", leadController.getLeadStatuses);
 router.get("/staff-dropdown", leadController.getStaffDropdown);
 router.get("/sites-dropdown", leadController.getSitesDropdown);

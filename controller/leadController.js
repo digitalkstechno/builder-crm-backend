@@ -200,6 +200,52 @@ exports.deleteFollowup = async (req, res) => {
   }
 };
 
+exports.getTodayCounts = async (req, res) => {
+  try {
+    const Lead = require("../model/lead");
+    const Reminder = require("../model/reminder");
+    const Builder = require("../model/builder");
+    const Staff = require("../model/staff");
+    const mongoose = require("mongoose");
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Builder ya staff dono ke liye builderId nikalo
+    let builderId;
+    const builder = await Builder.findOne({ userId: req.user.id, isDeleted: false }, "_id");
+    if (builder) {
+      builderId = builder._id;
+    } else {
+      const staff = await Staff.findOne({ userId: req.user.id, isDeleted: false }, "builderId");
+      if (staff) builderId = staff.builderId;
+    }
+
+    if (!builderId) return res.status(200).json({ status: "Success", data: { leads: 0, reminders: 0 } });
+
+    const [leads, reminders] = await Promise.all([
+      Lead.countDocuments({
+        builderId,
+        isDeleted: false,
+        createdAt: { $gte: today, $lt: tomorrow },
+      }),
+      Reminder.aggregate([
+        { $match: { builderId: new mongoose.Types.ObjectId(builderId), isActive: true, isDeleted: false, isSent: false } },
+        { $lookup: { from: 'followups', localField: 'followupId', foreignField: '_id', as: 'followup' } },
+        { $unwind: '$followup' },
+        { $match: { 'followup.followupDate': { $gte: today, $lt: tomorrow } } },
+        { $count: 'total' }
+      ]).then(r => r[0]?.total || 0)
+    ]);
+
+    return res.status(200).json({ status: "Success", data: { leads, reminders } });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 // Reminder controllers
 exports.getReminders = async (req, res) => {
   try {
