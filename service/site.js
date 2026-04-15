@@ -8,7 +8,7 @@ const mongoose = require("mongoose");
 
 
 exports.createSiteService = async (builderUserId, siteData) => {
-  const { name, city, area, description, propertyTypes, requirementTypes, budgets, priceRange, whatsappNumber, staff, teamId, status, images } = siteData;
+  const { name, city, area, description, propertyTypes, requirementTypes, budgets, whatsappNumber, staff, teamId, status, images } = siteData;
 
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
@@ -28,7 +28,6 @@ exports.createSiteService = async (builderUserId, siteData) => {
     propertyTypes: (propertyTypes || []).map(id => new mongoose.Types.ObjectId(id)),
     requirementTypes: (requirementTypes || []).map(id => new mongoose.Types.ObjectId(id)),
     budgets: (budgets || []).map(id => new mongoose.Types.ObjectId(id)),
-    priceRange,
     whatsappNumber,
     staff,
     teamId,

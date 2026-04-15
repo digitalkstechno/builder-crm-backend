@@ -1,53 +1,21 @@
 const express = require("express");
 const router = express.Router();
-const Site = require("../model/site");
-const mongoose = require("mongoose");
+const { getSiteById, getBuilderCities, getBuilderCityAreas, getUserIdByPhone, createPublicLead, getBuilderRequirementTypes, getBuilderPropertyTypes, getBuilderBudgets, getBuilderSites, getBuilderPublicProfile, createPublicLeadWithDetails } = require("../controller/publicController");
 
-// GET /public/builders/:builderId/cities
-// Returns distinct cities from active sites of a builder
-router.get("/builders/:builderId/cities", async (req, res) => {
-  try {
-    const { builderId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(builderId)) {
-      return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
-    }
+router.get("/user-by-phone/:phone", getUserIdByPhone);
+router.post("/leads", createPublicLead);
+router.get("/builders/:builderId", getBuilderPublicProfile);
+router.get("/builders/:builderId/requirement-types", getBuilderRequirementTypes);
+router.get("/builders/:builderId/property-types", getBuilderPropertyTypes);
+router.get("/builders/:builderId/budgets", getBuilderBudgets);
+router.get("/builders/:builderId/cities", getBuilderCities);
+router.get("/builders/:builderId/cities/:city/areas", getBuilderCityAreas);
+router.get("/builders/:builderId/sites", getBuilderSites);
+router.post("/builders/:builderId/leads", createPublicLeadWithDetails);
 
-    const cities = await Site.distinct("city", {
-      builderId: new mongoose.Types.ObjectId(builderId),
-      isDeleted: false,
-      deleteRequested: false,
-      isActive: true,
-    });
 
-    return res.status(200).json({ status: "Success", data: cities.sort() });
-  } catch (error) {
-    return res.status(500).json({ status: "Fail", message: error.message });
-  }
-});
 
-// GET /public/builders/:builderId/cities/:city/areas
-// Returns distinct areas for a city from active sites of a builder
-router.get("/builders/:builderId/cities/:city/areas", async (req, res) => {
-  try {
-    const { builderId, city } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(builderId)) {
-      return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
-    }
-
-    const areas = await Site.distinct("area", {
-      builderId: new mongoose.Types.ObjectId(builderId),
-      city: { $regex: new RegExp(`^${city}$`, "i") },
-      isDeleted: false,
-      deleteRequested: false,
-      isActive: true,
-    });
-
-    return res.status(200).json({ status: "Success", data: areas.sort() });
-  } catch (error) {
-    return res.status(500).json({ status: "Fail", message: error.message });
-  }
-});
-
+router.get("/sites/:siteId", getSiteById);
 module.exports = router;

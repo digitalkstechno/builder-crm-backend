@@ -9,7 +9,6 @@ const SiteSchema = new mongoose.Schema(
     propertyTypes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'PropertyType' }],
     requirementTypes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'RequirementType' }],
     budgets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Budget' }],
-    priceRange: { type: String },
     whatsappNumber: { type: String },
     staff: { type: String },
     teamId: { type: String },

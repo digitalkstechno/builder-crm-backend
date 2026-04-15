@@ -42,6 +42,13 @@ const BuilderSchema = new mongoose.Schema(
     // Detailed history and future plans
     subscriptions: [SubscriptionSchema],
     
+    websiteDetails: {
+      tagline: { type: String },
+      about: { type: String },
+      phone: { type: String },
+      email: { type: String },
+      logo: { type: String },
+    },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },

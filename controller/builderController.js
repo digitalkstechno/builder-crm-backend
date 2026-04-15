@@ -770,6 +770,33 @@ const getBuilderById = async (req, res) => {
   }
 };
 
+const getWebsiteDetails = async (req, res) => {
+  try {
+    const { builderId } = req.params;
+    const builder = await Builder.findById(builderId, "companyName address websiteDetails");
+    if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });
+    res.status(200).json({ success: true, data: builder });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const updateWebsiteDetails = async (req, res) => {
+  try {
+    const { builderId } = req.params;
+    const { tagline, about, phone, email, logo } = req.body;
+    const builder = await Builder.findByIdAndUpdate(
+      builderId,
+      { websiteDetails: { tagline, about, phone, email, logo } },
+      { new: true, select: "companyName address websiteDetails" }
+    );
+    if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });
+    res.status(200).json({ success: true, data: builder });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   checkPhoneStatus,
   savePaymentInfo,
@@ -784,4 +811,6 @@ module.exports = {
   deleteBuilder,
   getBuilderById,
   renewSubscription,
+  getWebsiteDetails,
+  updateWebsiteDetails,
 };

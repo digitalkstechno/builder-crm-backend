@@ -5,42 +5,42 @@ const LeadSchema = new mongoose.Schema(
     builderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Builder",
-      required: true,
+      // required: true,
     },
     name: {
       type: String,
-      required: true,
+      // required: true,
     },
     phone: {
       type: String,
-      required: true,
+      // required: true,
     },
     siteId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Site",
-      required: true,
+      // required: true,
     },
     siteName: {
       type: String,
-      required: true, // Store site name for quick access
+      // required: true, // Store site name for quick access
     },
     source: {
       type: String,
       enum: ['WhatsApp', 'Facebook', 'Website', 'Walk-in', 'Referral'],
-      required: true,
+      // required: true,
     },
     budget: {
       type: String,
-      required: true,
+      // required: true,
     },
     stageId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeadStatus",
-      required: true,
+      // required: true,
     },
     stageName: {
       type: String,
-      required: true, // Store stage name for quick access
+      // required: true, // Store stage name for quick access
     },
     agentId: {
       type: mongoose.Schema.Types.ObjectId,
