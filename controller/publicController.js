@@ -344,7 +344,23 @@ const getBuilderSites = async (req, res) => {
       .populate("budgets", "label minAmount maxAmount")
       .populate("builderId", "companyName address");
 
-    return res.status(200).json({ status: "Success", data: sites });
+    const data = sites.map((s) => {
+      const obj = s.toObject();
+      if (obj.description) {
+        obj.description = obj.description
+          .replace(/<[^>]*>/g, "")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+      return obj;
+    });
+
+    return res.status(200).json({ status: "Success", data });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
