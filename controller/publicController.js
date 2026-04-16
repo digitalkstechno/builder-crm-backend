@@ -72,9 +72,15 @@ const getBuilderCities = async (req, res) => {
       siteQuery.budgets = b._id;
     }
 
-    const cities = await Site.distinct("city", siteQuery);
+    const results = await Site.aggregate([
+      { $match: siteQuery },
+      { $group: { _id: "$city" } },
+      { $sort: { _id: 1 } },
+    ]);
 
-    return res.status(200).json({ status: "Success", data: cities.sort() });
+    const data = results.map((r, i) => ({ _id: i + 1, name: r._id }));
+
+    return res.status(200).json({ status: "Success", data });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
@@ -114,9 +120,15 @@ const getBuilderCityAreas = async (req, res) => {
       siteQuery.budgets = b._id;
     }
 
-    const areas = await Site.distinct("area", siteQuery);
+    const results = await Site.aggregate([
+      { $match: siteQuery },
+      { $group: { _id: "$area" } },
+      { $sort: { _id: 1 } },
+    ]);
 
-    return res.status(200).json({ status: "Success", data: areas.sort() });
+    const data = results.map((r, i) => ({ _id: i + 1, name: r._id }));
+
+    return res.status(200).json({ status: "Success", data });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
