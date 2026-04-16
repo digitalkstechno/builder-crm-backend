@@ -112,7 +112,8 @@ const createPublicLead = async (req, res) => {
       return res.status(401).json({ status: "Fail", message: "Invalid credentials" });
     }
 
-    const { name, phone, builderId, siteId, requirementType, propertyType, budget, city, area } = req.body;
+    const { name, phone, bid, siteId, requirementType, propertyType, budget, city, area } = req.body;
+    const builderId = bid;
     console.log("DEBUG : createPublicLead : req.body:", req.body);
 
     if (!name || !phone) {
