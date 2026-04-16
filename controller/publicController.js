@@ -42,16 +42,37 @@ const getSiteById = async (req, res) => {
 const getBuilderCities = async (req, res) => {
   try {
     const { builderId } = req.params;
-
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const cities = await Site.distinct("city", {
+    const { requirementType, propertyType, budget } = req.query;
+
+    const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
       isDeleted: false,
       deleteRequested: false,
       isActive: true,
-    });
+    };
+
+    if (requirementType) {
+      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      if (!rt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.requirementTypes = rt._id;
+    }
+
+    if (propertyType) {
+      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      if (!pt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.propertyTypes = pt._id;
+    }
+
+    if (budget) {
+      const b = await Budget.findOne({ label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      if (!b) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.budgets = b._id;
+    }
+
+    const cities = await Site.distinct("city", siteQuery);
 
     return res.status(200).json({ status: "Success", data: cities.sort() });
   } catch (error) {
@@ -62,17 +83,38 @@ const getBuilderCities = async (req, res) => {
 const getBuilderCityAreas = async (req, res) => {
   try {
     const { builderId, city } = req.params;
-
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const areas = await Site.distinct("area", {
+    const { requirementType, propertyType, budget } = req.query;
+
+    const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
       city: { $regex: new RegExp(`^${city}$`, "i") },
       isDeleted: false,
       deleteRequested: false,
       isActive: true,
-    });
+    };
+
+    if (requirementType) {
+      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      if (!rt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.requirementTypes = rt._id;
+    }
+
+    if (propertyType) {
+      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      if (!pt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.propertyTypes = pt._id;
+    }
+
+    if (budget) {
+      const b = await Budget.findOne({ label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      if (!b) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.budgets = b._id;
+    }
+
+    const areas = await Site.distinct("area", siteQuery);
 
     return res.status(200).json({ status: "Success", data: areas.sort() });
   } catch (error) {
@@ -203,10 +245,17 @@ const getBuilderPropertyTypes = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const sites = await Site.find(
-      { builderId, isDeleted: false, deleteRequested: false, isActive: true },
-      "propertyTypes"
-    );
+    const { requirementType } = req.query;
+
+    const siteQuery = { builderId, isDeleted: false, deleteRequested: false, isActive: true };
+
+    if (requirementType) {
+      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      if (!rt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.requirementTypes = rt._id;
+    }
+
+    const sites = await Site.find(siteQuery, "propertyTypes");
 
     const uniqueIds = [...new Set(sites.flatMap((s) => s.propertyTypes.map((id) => id.toString())))];
 
@@ -256,17 +305,25 @@ const getBuilderSites = async (req, res) => {
       isActive: true,
     };
 
-    if (requirementType && mongoose.Types.ObjectId.isValid(requirementType))
-      query.requirementTypes = new mongoose.Types.ObjectId(requirementType);
+    if (requirementType) {
+      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      if (!rt) return res.status(200).json({ status: "Success", data: [] });
+      query.requirementTypes = rt._id;
+    }
 
-    if (propertyType && mongoose.Types.ObjectId.isValid(propertyType))
-      query.propertyTypes = new mongoose.Types.ObjectId(propertyType);
+    if (propertyType) {
+      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      if (!pt) return res.status(200).json({ status: "Success", data: [] });
+      query.propertyTypes = pt._id;
+    }
 
-    if (budget && mongoose.Types.ObjectId.isValid(budget))
-      query.budgets = new mongoose.Types.ObjectId(budget);
+    if (budget) {
+      const b = await Budget.findOne({ label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      if (!b) return res.status(200).json({ status: "Success", data: [] });
+      query.budgets = b._id;
+    }
 
     if (city) query.city = { $regex: new RegExp(`^${city}$`, "i") };
-
     if (area) query.area = { $regex: new RegExp(`^${area}$`, "i") };
 
     const sites = await Site.find(query)
@@ -287,10 +344,23 @@ const getBuilderBudgets = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const sites = await Site.find(
-      { builderId, isDeleted: false, deleteRequested: false, isActive: true },
-      "budgets"
-    );
+    const { requirementType, propertyType } = req.query;
+
+    const siteQuery = { builderId, isDeleted: false, deleteRequested: false, isActive: true };
+
+    if (requirementType) {
+      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      if (!rt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.requirementTypes = rt._id;
+    }
+
+    if (propertyType) {
+      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      if (!pt) return res.status(200).json({ status: "Success", data: [] });
+      siteQuery.propertyTypes = pt._id;
+    }
+
+    const sites = await Site.find(siteQuery, "budgets");
 
     const uniqueIds = [...new Set(sites.flatMap((s) => s.budgets.map((id) => id.toString())))];
 
@@ -392,7 +462,7 @@ const updatePublicLeadWithDetails = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(leadId))
       return res.status(400).json({ status: "Fail", message: "Invalid leadId" });
 
-    const { siteId, requirementType, propertyType, budget, city, area } = req.body;
+    const { siteId, requirementType, propertyType, budget, city, area, site } = req.body;
 
     if (siteId && !mongoose.Types.ObjectId.isValid(siteId))
       return res.status(400).json({ status: "Fail", message: "Invalid siteId" });
@@ -403,13 +473,15 @@ const updatePublicLeadWithDetails = async (req, res) => {
       ...(propertyType && mongoose.Types.ObjectId.isValid(propertyType) && { propertyType }),
     };
 
-    if (siteId) {
-      const site = await Site.findById(siteId, "name teamId");
-      if (site) {
-        updateData.siteId = siteId;
-        updateData.siteName = site.name;
-        if (site.teamId) {
-          const team = await Team.findOne({ _id: site.teamId, isDeleted: false }, "leaderId");
+    const resolvedSiteId = siteId || (site ? (await Site.findOne({ name: { $regex: new RegExp(`^${site}$`, "i") }, builderId, isDeleted: false }, "_id"))?.id : null);
+
+    if (resolvedSiteId) {
+      const siteDoc = await Site.findById(resolvedSiteId, "name teamId");
+      if (siteDoc) {
+        updateData.siteId = resolvedSiteId;
+        updateData.siteName = siteDoc.name;
+        if (siteDoc.teamId) {
+          const team = await Team.findOne({ _id: siteDoc.teamId, isDeleted: false }, "leaderId");
           if (team && team.leaderId) {
             const leaderStaff = await Staff.findById(team.leaderId, "userId");
             if (leaderStaff) {
