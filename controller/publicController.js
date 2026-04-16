@@ -113,6 +113,8 @@ const createPublicLead = async (req, res) => {
     }
 
     const { name, phone, builderId, siteId, requirementType, propertyType, budget, city, area } = req.body;
+    console.log("DEBUG : createPublicLead : req.body:", req.body);
+
     if (!name || !phone) {
       return res.status(400).json({ status: "Fail", message: "name and phone are required" });
     }
