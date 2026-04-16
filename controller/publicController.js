@@ -353,6 +353,9 @@ const getBuilderSites = async (req, res) => {
           .replace(/\s+/g, " ")
           .trim();
       }
+      if (obj.images) {
+        obj.images = obj.images.map((img) => `${process.env.API_BASE_URL}${img}`);
+      }
       return obj;
     });
 
