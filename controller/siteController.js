@@ -1,3 +1,4 @@
+const fs = require("fs");
 const {
   createSiteService,
   fetchBuilderSitesService,
@@ -46,6 +47,12 @@ exports.createSite = async (req, res) => {
       data: site
     });
   } catch (error) {
+    // Delete uploaded files if site creation failed
+    if (req.files && req.files.length > 0) {
+      req.files.forEach((file) => {
+        try { fs.unlinkSync(file.path); } catch (e) {}
+      });
+    }
     return res.status(400).json({ status: "Fail", message: error.message });
   }
 };

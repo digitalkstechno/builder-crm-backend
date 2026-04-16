@@ -338,11 +338,7 @@ const getBuilderSites = async (req, res) => {
     if (city) query.city = { $regex: new RegExp(`^${city}$`, "i") };
     if (area) query.area = { $regex: new RegExp(`^${area}$`, "i") };
 
-    const sites = await Site.find(query)
-      .populate("propertyTypes", "name")
-      .populate("requirementTypes", "name")
-      .populate("budgets", "label minAmount maxAmount")
-      .populate("builderId", "companyName address");
+    const sites = await Site.find(query, "name description images");
 
     const data = sites.map((s) => {
       const obj = s.toObject();

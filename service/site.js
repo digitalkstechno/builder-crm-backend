@@ -37,6 +37,10 @@ exports.createSiteService = async (builderUserId, siteData) => {
 
   await newSite.save();
 
+  const populatedNewSite = await Site.findById(newSite._id)
+    .populate('requirementTypes', 'name')
+    .populate('propertyTypes', 'name')
+    .populate('budgets', 'label minAmount maxAmount');
   // If whatsappNumber is added, notify admin
   if (whatsappNumber) {
     const notification = new Notification({
@@ -62,7 +66,7 @@ exports.createSiteService = async (builderUserId, siteData) => {
     });
   }
 
-  return newSite;
+  return populatedNewSite;
 };
 
 exports.fetchBuilderSitesService = async (builderUserId, { page, limit, search }) => {
@@ -141,9 +145,11 @@ exports.updateSiteService = async (siteId, builderUserId, updateData, keptImages
   if (imagesToDelete.length > 0) {
     imagesToDelete.forEach((imagePath) => {
       const fullPath = path.join(__dirname, '..', 'public', imagePath);
-      fs.unlink(fullPath, (err) => {
-        if (err) console.error('Error deleting removed image:', err);
-      });
+      try {
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+      } catch (err) {
+        console.error('Error deleting removed image:', err);
+      }
     });
   }
 
