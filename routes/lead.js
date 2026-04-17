@@ -17,6 +17,7 @@ router.get("/staff-dropdown", leadController.getStaffDropdown);
 router.get("/sites-dropdown", leadController.getSitesDropdown);
 router.get("/site-team-members/:siteId", leadController.getSiteTeamMembers);
 router.get("/export-excel", leadController.exportLeads);
+router.get("/sample-excel-data", leadController.getSampleExcelData);
 router.get("/sample-excel", leadController.downloadSampleExcel);
 router.post("/import-excel", upload.single("file"), leadController.importLeads);
 router.get("/:id", leadController.getLeadById);

@@ -492,23 +492,10 @@ exports.exportLeads = async (req, res) => {
   }
 };
 
-// Helper: write Excel data-validation dropdown into a sheet
-function addDropdownValidation(ws, colLetter, totalDataRows, optionList) {
-  if (!ws["!dataValidations"]) ws["!dataValidations"] = [];
-  const formula = `"${optionList.join(",")}"`;
-  ws["!dataValidations"].push({
-    type: "list",
-    sqref: `${colLetter}2:${colLetter}${totalDataRows + 1}`,
-    formula1: formula,
-    showDropDown: false,
-    showErrorMessage: true,
-    errorTitle: "Invalid value",
-    error: `Please select from the list`,
-  });
-}
+// (ExcelJS is used for downloadSampleExcel — no XLSX helper needed)
 
-// Download sample Excel with real in-cell dropdowns
-exports.downloadSampleExcel = async (req, res) => {
+// Get dropdown data for sample Excel (sites, sources, stages)
+exports.getSampleExcelData = async (req, res) => {
   try {
     const Builder = require("../model/builder");
     const LeadStatus = require("../model/leadStatus");
@@ -518,55 +505,135 @@ exports.downloadSampleExcel = async (req, res) => {
     if (!builder) throw new Error("Builder not found");
 
     const [statuses, sites] = await Promise.all([
-      LeadStatus.find({ builderId: builder._id, isDeleted: false }).sort({ order: 1 }),
-      Site.find({ builderId: builder._id, isDeleted: false }).select("name"),
+      LeadStatus.find({ builderId: builder._id, isDeleted: false }).sort({ order: 1 }).select("_id name"),
+      Site.find({ builderId: builder._id, isDeleted: false }).select("_id name"),
     ]);
 
-    const stageNames = statuses.map(s => s.name);
-    const siteNames = sites.map(s => s.name);
     const sourceOptions = ["WhatsApp", "Facebook", "Website", "Walk-in", "Referral"];
 
-    // 10 empty rows so dropdowns are visible for user to fill
-    const TOTAL_ROWS = 10;
-    const sampleRows = [
-      {
-        "Name": "Rahul Sharma (Sample - delete this row)",
-        "Phone": "9876543210",
-        "Site": siteNames[0] || "",
-        "Source": sourceOptions[0],
-        "Budget": "50L - 80L",
-        "Stage": stageNames[0] || "",
-        "Notes": "Interested in 2BHK",
-      },
-      ...Array.from({ length: TOTAL_ROWS - 1 }, () => ({
-        "Name": "", "Phone": "", "Site": "", "Source": "",
-        "Budget": "", "Stage": "", "Notes": ""
-      }))
-    ];
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(sampleRows);
-    ws["!cols"] = [
-      { wch: 30 }, { wch: 15 }, { wch: 25 }, { wch: 15 },
-      { wch: 18 }, { wch: 22 }, { wch: 30 }
-    ];
-
-    // Add in-cell dropdown validations
-    // Columns: A=Name, B=Phone, C=Site, D=Source, E=Budget, F=Stage, G=Notes
-    if (siteNames.length > 0) addDropdownValidation(ws, "C", TOTAL_ROWS, siteNames);
-    addDropdownValidation(ws, "D", TOTAL_ROWS, sourceOptions);
-    if (stageNames.length > 0) addDropdownValidation(ws, "F", TOTAL_ROWS, stageNames);
-
-    XLSX.utils.book_append_sheet(wb, ws, "Lead Import");
-
-    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    res.setHeader("Content-Disposition", "attachment; filename=lead_import_sample.xlsx");
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    return res.send(buffer);
+    return res.status(200).json({
+      status: "Success",
+      data: {
+        sites: sites.map(s => ({ _id: s._id, name: s.name })),
+        sources: sourceOptions,
+        stages: statuses.map(s => ({ _id: s._id, name: s.name })),
+      }
+    });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
 };
+
+// Download sample Excel with master-sheet dropdowns (ExcelJS)
+exports.downloadSampleExcel = async (req, res) => {
+  try {
+    const ExcelJS = require("exceljs");
+    const Builder = require("../model/builder");
+    const LeadStatus = require("../model/leadStatus");
+    const Site = require("../model/site");
+
+    const builder = await Builder.findOne({ userId: req.user.id });
+    if (!builder) throw new Error("Builder not found");
+
+    const [statuses, sites] = await Promise.all([
+      LeadStatus.find({ builderId: builder._id, isDeleted: false }).sort({ order: 1 }).lean(),
+      Site.find({ builderId: builder._id, isDeleted: false }).select("name _id").lean(),
+    ]);
+
+    const SOURCE_OPTIONS = ["WhatsApp", "Facebook", "Website", "Walk-in", "Referral"];
+
+    const workbook = new ExcelJS.Workbook();
+
+    // ── Hidden master sheets (dropdown source data) ──────────────────────
+    const siteSheet = workbook.addWorksheet("__sites", { state: "veryHidden" });
+    siteSheet.addRows(sites.map(s => [s.name]));
+
+    const sourceSheet = workbook.addWorksheet("__sources", { state: "veryHidden" });
+    sourceSheet.addRows(SOURCE_OPTIONS.map(s => [s]));
+
+    const stageSheet = workbook.addWorksheet("__stages", { state: "veryHidden" });
+    stageSheet.addRows(statuses.map(s => [s.name]));
+
+    // ── Main import sheet ─────────────────────────────────────────────────
+    const sheet = workbook.addWorksheet("Lead Import");
+
+    // Column definitions
+    sheet.columns = [
+      { header: "Name",   key: "name",   width: 28 },
+      { header: "Phone",  key: "phone",  width: 16 },
+      { header: "Site",   key: "site",   width: 24 },
+      { header: "Source", key: "source", width: 16 },
+      { header: "Budget", key: "budget", width: 18 },
+      { header: "Stage",  key: "stage",  width: 22 },
+      { header: "Notes",  key: "notes",  width: 32 },
+    ];
+
+    // Bold header row only
+    sheet.getRow(1).font = { bold: true };
+
+    // Sample row
+    sheet.addRow({
+      name:   "Rahul Sharma (Sample - delete this row)",
+      phone:  "9876543210",
+      site:   sites[0]?.name    || "",
+      source: SOURCE_OPTIONS[0],
+      budget: "50L - 80L",
+      stage:  statuses[0]?.name || "",
+      notes:  "Interested in 2BHK",
+    });
+
+    // ── Data-validation dropdowns for rows 2-1001 ─────────────────────────
+    // Column index (1-based): Name=1, Phone=2, Site=3, Source=4, Budget=5, Stage=6, Notes=7
+    const COL = { site: 3, source: 4, stage: 6 };
+
+    const siteFormula   = `__sites!$A$1:$A$${sites.length   || 1}`;
+    const sourceFormula = `__sources!$A$1:$A$${SOURCE_OPTIONS.length}`;
+    const stageFormula  = `__stages!$A$1:$A$${statuses.length || 1}`;
+
+    for (let row = 2; row <= 1001; row++) {
+      if (sites.length > 0) {
+        sheet.getCell(row, COL.site).dataValidation = {
+          type: "list",
+          allowBlank: false,
+          formulae: [siteFormula],
+          showErrorMessage: true,
+          errorTitle: "Invalid Site",
+          error: "Please select a valid Site from the dropdown.",
+        };
+      }
+      sheet.getCell(row, COL.source).dataValidation = {
+        type: "list",
+        allowBlank: false,
+        formulae: [sourceFormula],
+        showErrorMessage: true,
+        errorTitle: "Invalid Source",
+        error: "Please select a valid Source from the dropdown.",
+      };
+      if (statuses.length > 0) {
+        sheet.getCell(row, COL.stage).dataValidation = {
+          type: "list",
+          allowBlank: false,
+          formulae: [stageFormula],
+          showErrorMessage: true,
+          errorTitle: "Invalid Stage",
+          error: "Please select a valid Stage from the dropdown.",
+        };
+      }
+    }
+
+    // Freeze header row
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+
+    // Stream response
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="lead_import_template.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 
 // Import leads from Excel - returns failed rows as downloadable Excel
 exports.importLeads = async (req, res) => {
@@ -582,10 +649,18 @@ exports.importLeads = async (req, res) => {
     if (!builder) throw new Error("Builder not found");
 
     const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    // Find "Lead Import" sheet by name; fallback to first non-hidden sheet
+    const targetSheetName =
+      wb.SheetNames.find(n => n === "Lead Import") ||
+      wb.SheetNames.find(n => !n.startsWith("__")) ||
+      wb.SheetNames[0];
+
+    const ws = wb.Sheets[targetSheetName];
     const rows = XLSX.utils.sheet_to_json(ws);
 
-    if (!rows.length) throw new Error("Excel file is empty");
+    if (!rows.length) throw new Error("Excel file is empty or has no data rows");
+
 
     const [statuses, sites] = await Promise.all([
       LeadStatus.find({ builderId: builder._id, isDeleted: false }),
@@ -606,6 +681,9 @@ exports.importLeads = async (req, res) => {
       const budget = row["Budget"]?.toString().trim() || "";
       const stageName = row["Stage"]?.toString().trim();
       const notes = row["Notes"]?.toString().trim() || "";
+
+      // Skip completely empty rows (template placeholder rows)
+      if (!name && !phone && !siteName && !source && !stageName) continue;
 
       let errorReason = null;
 
