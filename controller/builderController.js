@@ -784,10 +784,30 @@ const getWebsiteDetails = async (req, res) => {
 const updateWebsiteDetails = async (req, res) => {
   try {
     const { builderId } = req.params;
-    const { tagline, about, phone, email, logo } = req.body;
+    let { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks } = req.body;
+
+    // Handle file uploads
+    if (req.files) {
+      if (req.files.logo) {
+        logo = `/uploads/${req.files.logo[0].filename}`;
+      }
+      if (req.files.heroImage) {
+        heroImage = `/uploads/${req.files.heroImage[0].filename}`;
+      }
+    }
+
+    // Parse socialLinks if it's a string (happens when using FormData)
+    if (typeof socialLinks === "string") {
+      try {
+        socialLinks = JSON.parse(socialLinks);
+      } catch (e) {
+        console.error("Error parsing socialLinks:", e);
+      }
+    }
+
     const builder = await Builder.findByIdAndUpdate(
       builderId,
-      { websiteDetails: { tagline, about, phone, email, logo } },
+      { websiteDetails: { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks } },
       { new: true, select: "companyName address websiteDetails" }
     );
     if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });

@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const { getSiteById, getBuilderCities, getBuilderCityAreas, getUserIdByPhone, createPublicLead, getBuilderRequirementTypes, getBuilderPropertyTypes, getBuilderBudgets, getBuilderSites, getBuilderPublicProfile, createPublicLeadWithDetails, updatePublicLeadWithDetails } = require("../controller/publicController");
+const { createInquiry, getSiteById, getBuilderCities, getBuilderCityAreas, getUserIdByPhone, createPublicLead, getBuilderRequirementTypes, getBuilderPropertyTypes, getBuilderBudgets, getBuilderSites, getBuilderPublicProfile, createPublicLeadWithDetails, updatePublicLeadWithDetails } = require("../controller/publicController");
 
 
 router.get("/user-by-phone/:phone", getUserIdByPhone);
+router.post("/inquiry", createInquiry);
 router.post("/leads", createPublicLead);
 router.get("/builders/:builderId", getBuilderPublicProfile);
 router.get("/builders/:builderId/requirement-types", getBuilderRequirementTypes);

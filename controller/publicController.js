@@ -8,6 +8,7 @@ const Budget = require("../model/budget");
 const Team = require("../model/team");
 const Staff = require("../model/staff");
 const LeadStatus = require("../model/leadStatus");
+const Notification = require("../model/notification");
 const mongoose = require("mongoose");
 
 const getDefaultStage = async (builderId) => {
@@ -29,7 +30,7 @@ const getSiteById = async (req, res) => {
       .populate("propertyTypes", "name")
       .populate("requirementTypes", "name")
       .populate("budgets", "label minAmount maxAmount")
-      .populate("builderId", "companyName address");
+      .populate("builderId", "companyName address websiteDetails");
 
     if (!site) return res.status(404).json({ status: "Fail", message: "Site not found" });
 
@@ -535,7 +536,83 @@ const updatePublicLeadWithDetails = async (req, res) => {
   }
 };
 
+const createInquiry = async (req, res) => {
+  try {
+    const { name, phone, siteId, builderId, message } = req.body;
+
+    if (!name || !phone || !siteId || !builderId) {
+      return res.status(400).json({ status: "Fail", message: "name, phone, siteId and builderId are required" });
+    }
+
+    const leadData = {
+      name,
+      phone,
+      source: "Website",
+      builderId,
+      siteId,
+      notes: message
+    };
+
+    // Find site to get team info
+    const site = await Site.findById(siteId, "name teamId");
+    if (site) {
+      leadData.siteName = site.name;
+      if (site.teamId) {
+        const team = await Team.findOne({ _id: site.teamId, isDeleted: false }, "leaderId");
+        if (team && team.leaderId) {
+          const leaderStaff = await Staff.findById(team.leaderId, "userId");
+          if (leaderStaff) {
+            const leaderUser = await User.findById(leaderStaff.userId, "fullName");
+            leadData.agentId = team.leaderId;
+            leadData.agentName = leaderUser ? leaderUser.fullName : null;
+          }
+        }
+      }
+    }
+
+    // Default stage
+    const defaultStage = await getDefaultStage(builderId);
+    if (defaultStage) {
+      leadData.stageId = defaultStage._id;
+      leadData.stageName = defaultStage.name;
+    }
+
+    const lead = await Lead.create(leadData);
+    
+    // Notify Builder/Agent via Socket if needed
+    if (leadData.agentId) {
+        const { getIO } = require("../utils/socket");
+        const io = getIO();
+        const notification = new Notification({
+            title: "New Website Inquiry",
+            message: `New inquiry for "${leadData.siteName}" from ${name}.`,
+            type: "lead_assigned",
+            leadId: lead._id,
+            builderId,
+            recipientId: leadData.agentId.userId, // This might need mapping to userId
+            targetRole: "STAFF"
+        });
+        // Note: leadData.agentId is Staff ID. We need userId for socket.
+        // Above I already found leaderStaff which has userId.
+        const staff = await Staff.findById(leadData.agentId).populate('userId');
+        if (staff && staff.userId) {
+            notification.recipientId = staff.userId._id;
+            await notification.save();
+            io.to(staff.userId._id.toString()).emit("newLeadAssigned", {
+                notification,
+                leadName: name
+            });
+        }
+    }
+
+    return res.status(201).json({ status: "Success", data: lead });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 module.exports = {
+  createInquiry,
   getSiteById,
   getBuilderCities,
   getBuilderCityAreas,

@@ -44,10 +44,19 @@ const BuilderSchema = new mongoose.Schema(
     
     websiteDetails: {
       tagline: { type: String },
+      heroSubtitle: { type: String },
       about: { type: String },
       phone: { type: String },
       email: { type: String },
       logo: { type: String },
+      heroImage: { type: String },
+      socialLinks: {
+        facebook: { type: String },
+        instagram: { type: String },
+        linkedIn: { type: String },
+        twitter: { type: String },
+        youtube: { type: String },
+      }
     },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
