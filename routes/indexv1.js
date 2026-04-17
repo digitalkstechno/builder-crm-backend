@@ -14,7 +14,7 @@ router.use("/lead", require("./lead"));
 router.use("/lead-status", require("./leadStatus"));
 router.use("/whatsapp", require("./whatsapp"));
 router.use("/reminders", require("./reminders"));
-router.use("/notification", require("./notification"));
+router.use("/notifications", require("./notification"));
 router.use("/requirement-type", require("./requirementType"));
 router.use("/property-type", require("./propertyType"));
 router.use("/city-area", require("./cityArea"));

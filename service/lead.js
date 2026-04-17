@@ -5,50 +5,97 @@ const Staff = require("../model/staff");
 const Site = require("../model/site");
 const Followup = require("../model/followup");
 const Reminder = require("../model/reminder");
+const Notification = require("../model/notification");
+const { resolveContext } = require("../utils/context");
+const { getIO } = require("../utils/socket");
 
-exports.createLeadService = async (builderUserId, leadData) => {
+exports.createLeadService = async (userId, leadData) => {
   const { name, phone, siteId, source, budget, stageId, agentId, notes } = leadData;
 
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+  const context = await resolveContext(userId);
+  const { builderId, staffId, role } = context;
 
   // Get site details
-  const site = await Site.findOne({ _id: siteId, builderId: builder._id, isDeleted: false });
+  const site = await Site.findOne({ _id: siteId, builderId, isDeleted: false });
   if (!site) throw new Error("Site not found");
 
   // Get stage details
-  const stage = await LeadStatus.findOne({ _id: stageId, builderId: builder._id, isDeleted: false });
-  if (!stage) throw new Error("Lead status not found");
+  let stage;
+  if (stageId && mongoose.Types.ObjectId.isValid(stageId)) {
+    stage = await LeadStatus.findOne({ _id: stageId, builderId, isDeleted: false });
+  }
+  
+  if (!stage) {
+    // Fallback to the first available status if none provided or valid
+    stage = await LeadStatus.findOne({ builderId, isDeleted: false }).sort({ order: 1 });
+  }
+  
+  if (!stage) throw new Error("Lead status not found and no default available");
 
-  // Get agent details if provided
+  const finalStageId = stage._id;
+
+  // Assignment logic
+  let finalAgentId = agentId;
   let agentName = null;
-  if (agentId) {
-    const agent = await Staff.findOne({ _id: agentId, builderId: builder._id, isDeleted: false });
+
+  // If staff creates lead, assign to them
+  if (role === 'STAFF' && !finalAgentId) {
+    finalAgentId = staffId;
+  }
+
+  if (finalAgentId) {
+    const agent = await Staff.findOne({ _id: finalAgentId, builderId, isDeleted: false }).populate('userId');
     if (!agent) throw new Error("Agent not found");
-    // Get agent user name
-    const user = await require("../model/user").findOne({ _id: agent.userId });
-    agentName = user ? user.fullName : null;
+    agentName = agent.userId ? agent.userId.fullName : null;
   }
 
   const newLead = new Lead({
-    builderId: builder._id,
+    builderId,
     name,
     phone,
     siteId,
     siteName: site.name,
     source,
     budget,
-    stageId,
+    stageId: finalStageId,
     stageName: stage.name,
-    agentId,
+    agentId: finalAgentId,
     agentName,
     notes,
   });
 
   const savedLead = await newLead.save();
 
-  // Format the response to match frontend expectations
-  const formattedLead = {
+  // Notification if assigned
+  if (finalAgentId) {
+    try {
+      const agent = await Staff.findById(finalAgentId);
+      if (agent) {
+        const notification = new Notification({
+          title: "New Lead Assigned",
+          message: `New lead "${savedLead.name}" has been assigned to you.`,
+          type: "lead_assigned",
+          leadId: savedLead._id,
+          builderId,
+          recipientId: agent.userId,
+        });
+        await notification.save();
+
+        const io = getIO();
+        io.emit("newLeadAssigned", {
+          notification,
+          agentId: finalAgentId,
+          leadId: savedLead._id,
+          leadName: savedLead.name
+        });
+      }
+    } catch (err) {
+      console.error("Socket notification error:", err.message);
+    }
+  }
+
+  // Format the response
+  return {
     _id: savedLead._id,
     name: savedLead.name,
     phone: savedLead.phone,
@@ -62,25 +109,63 @@ exports.createLeadService = async (builderUserId, leadData) => {
     createdAt: savedLead.createdAt.toISOString().split('T')[0],
     notes: savedLead.notes,
   };
-
-  return formattedLead;
 };
 
-exports.fetchBuilderLeadsService = async (builderUserId, { page, limit, search, status, source, agent }) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+exports.fetchBuilderLeadsService = async (userId, { page, limit, search, status, source, agent, filterType }) => {
+  const context = await resolveContext(userId);
+  const { builderId, staffId, role, isTeamLeader, managedStaffIds } = context;
 
   const skip = (page - 1) * limit;
+  let query = { builderId, isDeleted: false };
 
-  let query = { builderId: builder._id, isDeleted: false };
+  // Context-based filtering
+  if (role === 'STAFF') {
+    if (isTeamLeader) {
+      // Team Leader Logic
+      if (filterType === 'team') {
+        // Staff under this leader
+        query.agentId = { $in: managedStaffIds };
+      } else if (filterType === 'my') {
+        // Only leads assigned directly to the leader
+        query.agentId = staffId;
+      } else {
+        // Both leader and team (default or 'all')
+        query.$or = [
+          { agentId: staffId },
+          { agentId: { $in: managedStaffIds } }
+        ];
+      }
+    } else {
+      // Regular Staff Logic
+      query.agentId = staffId;
+    }
+  }
+
+  // Override context filter if specific agent is selected (only if user has permission)
+  if (agent && agent !== 'all') {
+    if (role === 'BUILDER') {
+      if (agent === 'unassigned') query.agentId = null;
+      else query.agentId = agent;
+    } else if (isTeamLeader) {
+      // TL can filter for themselves or their team members
+      if (agent === staffId.toString() || managedStaffIds.map(id => id.toString()).includes(agent)) {
+        query.agentId = agent;
+        delete query.$or; // Remove the default TL OR query
+      }
+    }
+    // Note: Regular staff cannot change agent filter to see others' leads
+  }
 
   // Search filter
   if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { phone: { $regex: search, $options: "i" } },
-      { siteName: { $regex: search, $options: "i" } }
-    ];
+    query.$and = query.$and || [];
+    query.$and.push({
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { siteName: { $regex: search, $options: "i" } }
+      ]
+    });
   }
 
   // Status filter
@@ -91,15 +176,6 @@ exports.fetchBuilderLeadsService = async (builderUserId, { page, limit, search, 
   // Source filter
   if (source && source !== 'all') {
     query.source = source;
-  }
-
-  // Agent filter
-  if (agent && agent !== 'all') {
-    if (agent === 'unassigned') {
-      query.agentId = null;
-    } else {
-      query.agentId = agent;
-    }
   }
 
   const totalLeads = await Lead.countDocuments(query);
@@ -130,35 +206,59 @@ exports.fetchBuilderLeadsService = async (builderUserId, { page, limit, search, 
   return { totalLeads, leadData: formattedLeads };
 };
 
-exports.updateLeadService = async (leadId, builderUserId, updateData) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+exports.updateLeadService = async (leadId, userId, updateData) => {
+  const context = await resolveContext(userId);
+  const { builderId, staffId, role, isTeamLeader, managedStaffIds } = context;
 
-  const lead = await Lead.findOne({ _id: leadId, builderId: builder._id, isDeleted: false });
+  const lead = await Lead.findOne({ _id: leadId, builderId, isDeleted: false });
   if (!lead) throw new Error("Lead not found");
 
-  // Update related data if needed
+  // Permission Check: Regular staff can only update leads assigned to them
+  if (role === 'STAFF' && !isTeamLeader) {
+    if (lead.agentId && lead.agentId.toString() !== staffId.toString()) {
+      throw new Error("You do not have permission to update this lead");
+    }
+  }
+  // Permission Check: Team Leader can update leads assigned to them or their team
+  if (role === 'STAFF' && isTeamLeader) {
+    const isLeadAssignedToTL = lead.agentId && lead.agentId.toString() === staffId.toString();
+    const isLeadAssignedToTeam = lead.agentId && managedStaffIds.map(id => id.toString()).includes(lead.agentId.toString());
+    
+    if (!isLeadAssignedToTL && !isLeadAssignedToTeam) {
+      // If it's not assigned to either, TL can only update it if they are the one being assigned it now
+      // Actually, TL should probably be able to assign unassigned leads or leads for their team.
+    }
+  }
+
+  // Update site if changed
   if (updateData.siteId) {
-    const site = await Site.findOne({ _id: updateData.siteId, builderId: builder._id, isDeleted: false });
+    const site = await Site.findOne({ _id: updateData.siteId, builderId, isDeleted: false });
     if (!site) throw new Error("Site not found");
     updateData.siteName = site.name;
   }
 
+  // Update stage if changed
   if (updateData.stageId) {
-    const stage = await LeadStatus.findOne({ _id: updateData.stageId, builderId: builder._id, isDeleted: false });
+    const stage = await LeadStatus.findOne({ _id: updateData.stageId, builderId, isDeleted: false });
     if (!stage) throw new Error("Lead status not found");
     updateData.stageName = stage.name;
   }
 
+  // Update agent if changed
+  let agentChanged = false;
   if (updateData.agentId) {
     if (updateData.agentId === 'unassigned') {
       updateData.agentId = null;
       updateData.agentName = null;
     } else {
-      const agent = await Staff.findOne({ _id: updateData.agentId, builderId: builder._id, isDeleted: false });
+      const agent = await Staff.findOne({ _id: updateData.agentId, builderId, isDeleted: false }).populate('userId');
       if (!agent) throw new Error("Agent not found");
-      const user = await require("../model/user").findOne({ _id: agent.userId });
-      updateData.agentName = user ? user.fullName : null;
+      updateData.agentName = agent.userId ? agent.userId.fullName : null;
+      
+      // Check if assignment actually changed
+      if (!lead.agentId || lead.agentId.toString() !== updateData.agentId.toString()) {
+        agentChanged = true;
+      }
     }
   }
 
@@ -170,8 +270,32 @@ exports.updateLeadService = async (leadId, builderUserId, updateData) => {
    .populate('agentId', 'userId')
    .populate('siteId', 'name');
 
-  // Format the updated lead to match frontend expectations
-  const formattedLead = {
+  // Notification if agent changed
+  if (agentChanged && updatedLead.agentId) {
+    try {
+      const notification = new Notification({
+        title: "Lead Reassigned",
+        message: `Lead "${updatedLead.name}" has been assigned to you.`,
+        type: "lead_assigned",
+        leadId: updatedLead._id,
+        builderId,
+        recipientId: updatedLead.agentId.userId,
+      });
+      await notification.save();
+
+      const io = getIO();
+      io.emit("leadReassigned", {
+        notification,
+        agentId: updatedLead.agentId._id,
+        leadId: updatedLead._id,
+        leadName: updatedLead.name
+      });
+    } catch (err) {
+      console.error("Socket notification error:", err.message);
+    }
+  }
+
+  return {
     _id: updatedLead._id,
     name: updatedLead.name,
     phone: updatedLead.phone,
@@ -185,8 +309,6 @@ exports.updateLeadService = async (leadId, builderUserId, updateData) => {
     createdAt: updatedLead.createdAt.toISOString().split('T')[0],
     notes: updatedLead.notes,
   };
-
-  return formattedLead;
 };
 
 exports.deleteLeadService = async (leadId, builderUserId) => {
@@ -215,12 +337,11 @@ exports.getLeadByIdService = async (leadId, builderUserId) => {
 };
 
 // Get all lead statuses for dropdown
-exports.getLeadStatusesService = async (builderUserId) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+exports.getLeadStatusesService = async (userId) => {
+  const { builderId } = await resolveContext(userId);
 
   const statuses = await LeadStatus.find({
-    builderId: builder._id,
+    builderId,
     isDeleted: false
   }).sort({ order: 1 });
 
@@ -228,12 +349,11 @@ exports.getLeadStatusesService = async (builderUserId) => {
 };
 
 // Get all staff for dropdown
-exports.getStaffDropdownService = async (builderUserId) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+exports.getStaffDropdownService = async (userId) => {
+  const { builderId } = await resolveContext(userId);
 
   const staff = await Staff.find({
-    builderId: builder._id,
+    builderId,
     isDeleted: false
   }).populate('userId', 'fullName email phone');
 
@@ -246,12 +366,11 @@ exports.getStaffDropdownService = async (builderUserId) => {
 };
 
 // Get all sites for dropdown
-exports.getSitesDropdownService = async (builderUserId) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+exports.getSitesDropdownService = async (userId) => {
+  const { builderId } = await resolveContext(userId);
 
   const sites = await Site.find({
-    builderId: builder._id,
+    builderId,
     isDeleted: false
   }).select('name city area teamId');
 
@@ -259,14 +378,13 @@ exports.getSitesDropdownService = async (builderUserId) => {
 };
 
 // Get team members for a specific site
-exports.getSiteTeamMembersService = async (siteId, builderUserId) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+exports.getSiteTeamMembersService = async (siteId, userId) => {
+  const { builderId } = await resolveContext(userId);
 
   // Find the site and get its team
   const site = await Site.findOne({
     _id: siteId,
-    builderId: builder._id,
+    builderId,
     isDeleted: false
   });
 
@@ -277,7 +395,7 @@ exports.getSiteTeamMembersService = async (siteId, builderUserId) => {
   // Get the team with populated leader and members
   const team = await require("../model/team").findOne({
     _id: site.teamId,
-    builderId: builder._id,
+    builderId,
     isDeleted: false
   }).populate('leaderId', 'userId')
     .populate('members', 'userId');
@@ -313,25 +431,24 @@ exports.getSiteTeamMembersService = async (siteId, builderUserId) => {
 };
 
 // Followup services
-exports.createFollowupService = async (builderUserId, followupData) => {
+exports.createFollowupService = async (userId, followupData) => {
   const { leadId, followupDate, followupTime, notes } = followupData;
 
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+  const { builderId } = await resolveContext(userId);
 
   // Verify lead belongs to builder
-  const lead = await Lead.findOne({ _id: leadId, builderId: builder._id, isDeleted: false });
+  const lead = await Lead.findOne({ _id: leadId, builderId, isDeleted: false });
   if (!lead) throw new Error("Lead not found");
 
   // Combine date and time into a single DateTime
   const followupDateTime = new Date(`${followupDate}T${followupTime || '09:00'}:00`);
 
   const newFollowup = new Followup({
-    builderId: builder._id,
+    builderId,
     leadId,
     followupDate: followupDateTime,
     notes,
-    createdBy: builderUserId, // Use user ID directly
+    createdBy: userId, // Use user ID directly
   });
 
   const savedFollowup = await newFollowup.save();
@@ -341,7 +458,7 @@ exports.createFollowupService = async (builderUserId, followupData) => {
   reminderDate.setDate(reminderDate.getDate() - 1);
 
   const reminder = new Reminder({
-    builderId: builder._id,
+    builderId,
     leadId,
     followupId: savedFollowup._id,
     reminderDate,

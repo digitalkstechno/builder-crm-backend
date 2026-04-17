@@ -4,7 +4,7 @@ const { getNotifications, markAsRead, markAllAsRead } = require("../controller/n
 const authMiddleware = require("../middleware/auth");
 
 router.get("/", authMiddleware, getNotifications);
-router.patch("/:id/read", authMiddleware, markAsRead);
-router.patch("/read-all", authMiddleware, markAllAsRead);
+router.put("/:id/read", authMiddleware, markAsRead);
+router.put("/read-all", authMiddleware, markAllAsRead);
 
 module.exports = router;

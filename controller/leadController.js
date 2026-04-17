@@ -13,6 +13,7 @@ const {
   updateFollowupService,
   deleteFollowupService,
 } = require("../service/lead");
+const { resolveContext } = require("../utils/context");
 const XLSX = require("xlsx");
 
 exports.createLead = async (req, res) => {
@@ -36,8 +37,9 @@ exports.fetchBuilderLeads = async (req, res) => {
     const status = req.query.status;
     const source = req.query.source;
     const agent = req.query.agent;
+    const filterType = req.query.filterType; // 'my', 'team', or 'all'
 
-    const { totalLeads, leadData } = await fetchBuilderLeadsService(req.user.id, { page, limit, search, status, source, agent });
+    const { totalLeads, leadData } = await fetchBuilderLeadsService(req.user.id, { page, limit, search, status, source, agent, filterType });
 
     return res.status(200).json({
       status: "Success",
@@ -203,10 +205,11 @@ exports.deleteFollowup = async (req, res) => {
 
 exports.getTodayCounts = async (req, res) => {
   try {
+    const context = await resolveContext(req.user.id);
+    const { builderId, staffId, role, isTeamLeader, managedStaffIds } = context;
+
     const Lead = require("../model/lead");
     const Reminder = require("../model/reminder");
-    const Builder = require("../model/builder");
-    const Staff = require("../model/staff");
     const mongoose = require("mongoose");
 
     const today = new Date();
@@ -214,32 +217,63 @@ exports.getTodayCounts = async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // Builder ya staff dono ke liye builderId nikalo
-    let builderId;
-    const builder = await Builder.findOne({ userId: req.user.id, isDeleted: false }, "_id");
-    if (builder) {
-      builderId = builder._id;
-    } else {
-      const staff = await Staff.findOne({ userId: req.user.id, isDeleted: false }, "builderId");
-      if (staff) builderId = staff.builderId;
+    // Prepare Lead Query
+    let leadQuery = {
+      builderId,
+      isDeleted: false,
+      createdAt: { $gte: today, $lt: tomorrow },
+    };
+
+    // Prepare Reminder Filter
+    let reminderMatch = { 
+      builderId: new mongoose.Types.ObjectId(builderId), 
+      isActive: true, 
+      isDeleted: false, 
+      isSent: false 
+    };
+
+    if (role === 'STAFF') {
+      const assignedIds = [staffId];
+      if (isTeamLeader) {
+        managedStaffIds.forEach(id => assignedIds.push(new mongoose.Types.ObjectId(id)));
+      }
+      
+      // For leads count
+      leadQuery.agentId = { $in: assignedIds };
+      
+      // For reminders count (need to filter through lead assignment)
+      // This is more complex in aggregate, we'll add it to the pipeline
     }
 
-    if (!builderId) return res.status(200).json({ status: "Success", data: { leads: 0, reminders: 0 } });
+    const leadsCountPromise = Lead.countDocuments(leadQuery);
 
-    const [leads, reminders] = await Promise.all([
-      Lead.countDocuments({
-        builderId,
-        isDeleted: false,
-        createdAt: { $gte: today, $lt: tomorrow },
-      }),
-      Reminder.aggregate([
-        { $match: { builderId: new mongoose.Types.ObjectId(builderId), isActive: true, isDeleted: false, isSent: false } },
-        { $lookup: { from: 'followups', localField: 'followupId', foreignField: '_id', as: 'followup' } },
-        { $unwind: '$followup' },
-        { $match: { 'followup.followupDate': { $gte: today, $lt: tomorrow } } },
-        { $count: 'total' }
-      ]).then(r => r[0]?.total || 0)
+    const reminderPipeline = [
+      { $match: reminderMatch },
+      { $lookup: { from: 'followups', localField: 'followupId', foreignField: '_id', as: 'followup' } },
+      { $unwind: '$followup' },
+      { $match: { 'followup.followupDate': { $gte: today, $lt: tomorrow } } },
+      { $lookup: { from: 'leads', localField: 'leadId', foreignField: '_id', as: 'lead' } },
+      { $unwind: '$lead' }
+    ];
+
+    if (role === 'STAFF') {
+      const assignedIds = [staffId];
+      if (isTeamLeader) {
+        managedStaffIds.forEach(id => assignedIds.push(id));
+      }
+      reminderPipeline.push({
+        $match: { 'lead.agentId': { $in: assignedIds.map(id => new mongoose.Types.ObjectId(id)) } }
+      });
+    }
+
+    reminderPipeline.push({ $count: 'total' });
+
+    const [leads, remindersResult] = await Promise.all([
+      leadsCountPromise,
+      Reminder.aggregate(reminderPipeline)
     ]);
+
+    const reminders = remindersResult[0]?.total || 0;
 
     return res.status(200).json({ status: "Success", data: { leads, reminders } });
   } catch (error) {
@@ -250,23 +284,17 @@ exports.getTodayCounts = async (req, res) => {
 // Reminder controllers
 exports.getReminders = async (req, res) => {
   try {
-    const builder = await require("../model/builder").findOne({ userId: req.user.id });
-    if (!builder) throw new Error("Builder not found");
+    const context = await resolveContext(req.user.id);
+    const { builderId, staffId, role, isTeamLeader, managedStaffIds } = context;
 
     const { status, page = 1, limit = 10 } = req.query;
     const numericLimit = parseInt(limit);
     const numericPage = parseInt(page);
     const skip = (numericPage - 1) * numericLimit;
 
-    let query = {
-      builderId: builder._id,
-      isActive: true,
-      isDeleted: false
-    };
-
-    // Use aggregation pipeline for proper filtering by followup date
+    // Base match conditions
     let matchConditions = {
-      builderId: builder._id,
+      builderId: builderId,
       isActive: true,
       isDeleted: false
     };
@@ -299,8 +327,34 @@ exports.getReminders = async (req, res) => {
       },
       {
         $unwind: '$followup'
+      },
+      {
+        $lookup: {
+          from: 'leads',
+          localField: 'leadId',
+          foreignField: '_id',
+          as: 'lead'
+        }
+      },
+      {
+        $unwind: { path: '$lead', preserveNullAndEmptyArrays: true }
       }
     ];
+
+    // Context-based filtering (Reminders jisko lead assign hui hogi usko dikhega)
+    if (role === 'STAFF') {
+      const assignedIds = [staffId];
+      if (isTeamLeader) {
+        // Team Leader sees their own and their team's reminders
+        managedStaffIds.forEach(id => assignedIds.push(id));
+      }
+      
+      pipeline.push({
+        $match: {
+          'lead.agentId': { $in: assignedIds }
+        }
+      });
+    }
 
     // Add date filtering based on followup.followupDate
     if (status === 'missed') {
@@ -330,14 +384,6 @@ exports.getReminders = async (req, res) => {
 
     // Add lookups for lead data
     pipeline.push(
-      {
-        $lookup: {
-          from: 'leads',
-          localField: 'leadId',
-          foreignField: '_id',
-          as: 'lead'
-        }
-      },
       {
         $unwind: { path: '$lead', preserveNullAndEmptyArrays: true }
       },
