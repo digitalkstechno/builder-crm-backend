@@ -9,10 +9,17 @@ const {
 
 exports.createSite = async (req, res) => {
   try {
-    // Handle uploaded images
+    // Handle uploaded images and brochure
     let imageUrls = [];
-    if (req.files && req.files.length > 0) {
-      imageUrls = req.files.map(file => `/uploads/${file.filename}`);
+    let brochureUrl = req.body.brochureUrl || "";
+
+    if (req.files) {
+      if (req.files.images) {
+        imageUrls = req.files.images.map(file => `/uploads/${file.filename}`);
+      }
+      if (req.files.brochure && req.files.brochure.length > 0) {
+        brochureUrl = `/uploads/${req.files.brochure[0].filename}`;
+      }
     }
 
     const rtRaw = req.body['requirementTypes'];
@@ -37,7 +44,8 @@ exports.createSite = async (req, res) => {
       requirementTypes,
       propertyTypes,
       budgets,
-      images: imageUrls
+      images: imageUrls,
+      brochureUrl
     };
 
     const site = await createSiteService(req.user.id, siteData);
@@ -48,8 +56,9 @@ exports.createSite = async (req, res) => {
     });
   } catch (error) {
     // Delete uploaded files if site creation failed
-    if (req.files && req.files.length > 0) {
-      req.files.forEach((file) => {
+    if (req.files) {
+      const allFiles = [...(req.files.images || []), ...(req.files.brochure || [])];
+      allFiles.forEach((file) => {
         try { fs.unlinkSync(file.path); } catch (e) {}
       });
     }
@@ -122,10 +131,17 @@ exports.updateSiteStatus = async (req, res) => {
 
 exports.updateSite = async (req, res) => {
   try {
-    // Handle uploaded images
+    // Handle uploaded images and brochure
     let newImageUrls = [];
-    if (req.files && req.files.length > 0) {
-      newImageUrls = req.files.map(file => `/uploads/${file.filename}`);
+    let brochureUrl = req.body.brochureUrl; // Preserve existing if not new file
+
+    if (req.files) {
+      if (req.files.images) {
+        newImageUrls = req.files.images.map(file => `/uploads/${file.filename}`);
+      }
+      if (req.files.brochure && req.files.brochure.length > 0) {
+        brochureUrl = `/uploads/${req.files.brochure[0].filename}`;
+      }
     }
 
     // Parse kept images from the request
@@ -160,7 +176,8 @@ exports.updateSite = async (req, res) => {
       requirementTypes,
       propertyTypes,
       budgets,
-      images: [...keptImages, ...newImageUrls]
+      images: [...keptImages, ...newImageUrls],
+      brochureUrl
     };
 
     const updatedSite = await updateSiteService(req.params.id, req.user.id, updateData, keptImages);

@@ -28,6 +28,10 @@ const SiteSchema = new mongoose.Schema(
       default: "inactive",
     },
 
+    address: { type: String },
+    amenities: [{ type: String }],
+    videoUrl: { type: String },
+    brochureUrl: { type: String },
     images: [{ type: String }],
     builderId: {
       type: mongoose.Schema.Types.ObjectId,

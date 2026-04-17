@@ -8,13 +8,16 @@ const mongoose = require("mongoose");
 
 
 exports.createSiteService = async (builderUserId, siteData) => {
-  const { name, city, area, description, propertyTypes, requirementTypes, budgets, whatsappNumber, staff, teamId, status, images } = siteData;
+  const { name, city, area, description, propertyTypes, requirementTypes, budgets, whatsappNumber, staff, teamId, status, images, address, amenities, videoUrl, brochureUrl } = siteData;
 
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
 
   // Check site limit
-  const currentSiteCount = await Site.countDocuments({ builderId: builder._id, isDeleted: false });
+  const currentSiteCount = await Site.countDocuments({ 
+    builderId: builder._id, 
+    isDeleted: false
+  });
   if (currentSiteCount >= builder.currentLimits.noOfSites) {
     throw new Error(`Site limit exceeded. You can only create ${builder.currentLimits.noOfSites} sites.`);
   }
@@ -33,6 +36,10 @@ exports.createSiteService = async (builderUserId, siteData) => {
     teamId,
     status,
     images,
+    address,
+    amenities: amenities || [],
+    videoUrl,
+    brochureUrl
   });
 
   await newSite.save();
@@ -49,14 +56,21 @@ exports.createSiteService = async (builderUserId, siteData) => {
       type: "site_added",
       siteId: newSite._id,
       builderId: builder._id,
+      targetRole: "ADMIN"
     });
     await notification.save();
 
     const io = getIO();
     const populatedSite = await Site.findById(newSite._id).populate("builderId", "companyName");
-    io.emit("admin_notification", {
-      notification,
-      site: populatedSite,
+    
+    // Notify only ADMIN users via socket
+    const User = require("../model/user");
+    const admins = await User.find({ role: "ADMIN", isDeleted: false }, "_id");
+    admins.forEach(admin => {
+      io.to(admin._id.toString()).emit("admin_notification", {
+        notification,
+        site: populatedSite,
+      });
     });
     
     // Also emit specifically for the whatsapp page update
@@ -103,6 +117,7 @@ exports.deleteSiteService = async (siteId, builderUserId) => {
   const site = await Site.findOne({ _id: siteId, builderId: builder._id });
   if (!site) throw new Error("Site not found");
 
+  site.isDeleted = true;
   site.deleteRequested = true;
   await site.save();
 
@@ -116,13 +131,19 @@ exports.deleteSiteService = async (siteId, builderUserId) => {
     message: `Site "${site.name}" deletion has been requested by ${builder.companyName}. Review and Unlink WhatsApp in Hub.`,
     type: "site_deleted",
     builderId: builder._id,
-    siteId: site._id
+    siteId: site._id,
+    targetRole: "ADMIN"
   });
   await notification.save();
 
-  io.emit("admin_notification", {
-    notification,
-    site: populatedSite,
+  const User = require("../model/user");
+  const admins = await User.find({ role: "ADMIN", isDeleted: false }, "_id");
+  
+  admins.forEach(admin => {
+    io.to(admin._id.toString()).emit("admin_notification", {
+      notification,
+      site: populatedSite,
+    });
   });
 
   io.emit("whatsapp_page_update", {
@@ -172,14 +193,21 @@ exports.updateSiteService = async (siteId, builderUserId, updateData, keptImages
       type: "whatsapp_updated",
       siteId: updatedSite._id,
       builderId: builder._id,
+      targetRole: "ADMIN"
     });
     await notification.save();
 
     const io = getIO();
     const populatedSite = await Site.findById(updatedSite._id).populate("builderId", "companyName");
-    io.emit("admin_notification", {
-      notification,
-      site: populatedSite,
+    
+    // Notify only ADMIN users via socket
+    const User = require("../model/user");
+    const admins = await User.find({ role: "ADMIN", isDeleted: false }, "_id");
+    admins.forEach(admin => {
+      io.to(admin._id.toString()).emit("admin_notification", {
+        notification,
+        site: populatedSite,
+      });
     });
 
     // Also emit specifically for the whatsapp page update

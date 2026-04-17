@@ -5,20 +5,15 @@ const Staff = require("../model/staff");
 exports.getNotifications = async (req, res) => {
   try {
     const userId = req.user.id;
+    const role = req.user.role;
     let query = {};
 
-    // Check if user is Builder
-    const builder = await Builder.findOne({ userId, isDeleted: false });
-    if (builder) {
-      query = { builderId: builder._id, recipientId: { $exists: false } };
+    if (role === 'ADMIN') {
+      // Central Admin sees only system-targeted notifications
+      query = { targetRole: 'ADMIN' };
     } else {
-      // Check if user is Staff
-      const staff = await Staff.findOne({ userId, isDeleted: false });
-      if (staff) {
-        query = { recipientId: userId };
-      } else {
-        return res.status(200).json({ status: "Success", data: [] });
-      }
+      // All other users (BUILDER, STAFF) see ONLY notifications sent specifically to them
+      query = { recipientId: userId };
     }
 
     const notifications = await Notification.find(query).sort({ createdAt: -1 }).limit(50);
@@ -52,17 +47,13 @@ exports.markAsRead = async (req, res) => {
 exports.markAllAsRead = async (req, res) => {
   try {
     const userId = req.user.id;
+    const role = req.user.role;
     let query = { isRead: false };
 
-    const builder = await Builder.findOne({ userId, isDeleted: false });
-    if (builder) {
-      query.builderId = builder._id;
-      query.recipientId = { $exists: false };
+    if (role === 'ADMIN') {
+      query.targetRole = 'ADMIN';
     } else {
-      const staff = await Staff.findOne({ userId, isDeleted: false });
-      if (staff) {
-        query.recipientId = userId;
-      }
+      query.recipientId = userId;
     }
 
     await Notification.updateMany(query, { isRead: true });

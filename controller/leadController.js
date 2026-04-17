@@ -37,9 +37,10 @@ exports.fetchBuilderLeads = async (req, res) => {
     const status = req.query.status;
     const source = req.query.source;
     const agent = req.query.agent;
+    const site = req.query.site;
     const filterType = req.query.filterType; // 'my', 'team', or 'all'
 
-    const { totalLeads, leadData } = await fetchBuilderLeadsService(req.user.id, { page, limit, search, status, source, agent, filterType });
+    const { totalLeads, leadData } = await fetchBuilderLeadsService(req.user.id, { page, limit, search, status, source, agent, site, filterType });
 
     return res.status(200).json({
       status: "Success",

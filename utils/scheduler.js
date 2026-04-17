@@ -48,7 +48,8 @@ const checkReminders = async () => {
           type: "reminder",
           leadId: lead._id,
           builderId: reminder.builderId,
-          recipientId: recipientUserId
+          recipientId: recipientUserId,
+          targetRole: "STAFF"
         });
         await notification.save();
 

@@ -9,6 +9,7 @@ const NotificationSchema = new mongoose.Schema(
     leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead" },
     builderId: { type: mongoose.Schema.Types.ObjectId, ref: "Builder" },
     recipientId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // For staff/user specific notifications
+    targetRole: { type: String, enum: ["ADMIN", "BUILDER", "STAFF"] },
     isRead: { type: Boolean, default: false },
   },
   { timestamps: true }

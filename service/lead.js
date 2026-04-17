@@ -78,6 +78,7 @@ exports.createLeadService = async (userId, leadData) => {
           leadId: savedLead._id,
           builderId,
           recipientId: agent.userId,
+          targetRole: "STAFF"
         });
         await notification.save();
 
@@ -111,7 +112,7 @@ exports.createLeadService = async (userId, leadData) => {
   };
 };
 
-exports.fetchBuilderLeadsService = async (userId, { page, limit, search, status, source, agent, filterType }) => {
+exports.fetchBuilderLeadsService = async (userId, { page, limit, search, status, source, agent, site, filterType }) => {
   const context = await resolveContext(userId);
   const { builderId, staffId, role, isTeamLeader, managedStaffIds } = context;
 
@@ -176,6 +177,11 @@ exports.fetchBuilderLeadsService = async (userId, { page, limit, search, status,
   // Source filter
   if (source && source !== 'all') {
     query.source = source;
+  }
+
+  // Site filter
+  if (site && site !== 'all') {
+    query.siteId = site;
   }
 
   const totalLeads = await Lead.countDocuments(query);
@@ -280,6 +286,7 @@ exports.updateLeadService = async (leadId, userId, updateData) => {
         leadId: updatedLead._id,
         builderId,
         recipientId: updatedLead.agentId.userId,
+        targetRole: "STAFF"
       });
       await notification.save();
 
