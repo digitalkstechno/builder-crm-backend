@@ -44,4 +44,7 @@ const ReminderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Performance index for scheduler
+ReminderSchema.index({ reminderDate: 1, isSent: 1, isActive: 1, isDeleted: 1 });
+
 module.exports = mongoose.model("Reminder", ReminderSchema);

@@ -299,18 +299,14 @@ exports.getReminders = async (req, res) => {
       isDeleted: false
     };
 
-    if (status === 'missed') {
-      // Reminders for followups that are overdue (past due date)
-      matchConditions.isSent = false;
-    } else if (status === 'today') {
-      // Reminders for followups due today
-      matchConditions.isSent = false;
-    } else if (status === 'upcoming') {
-      // Reminders for future followups
-      matchConditions.isSent = false;
-    } else if (status === 'completed') {
-      matchConditions.isSent = true;
+    if (status === 'completed') {
+      // For completed, we don't strictly care about isSent (notification), 
+      // but we filter by followup.isCompleted later in the pipeline
+    } else {
+      // For others, they should not be completed yet? 
+      // Actually, let's remove isSent from base matchConditions and handle it in pipeline
     }
+    delete matchConditions.isSent; 
 
     // Build aggregation pipeline
     let pipeline = [
@@ -356,30 +352,52 @@ exports.getReminders = async (req, res) => {
       });
     }
 
-    // Add date filtering based on followup.followupDate
-    if (status === 'missed') {
+    // Add date and completion filtering based on followup
+    if (status === 'completed') {
       pipeline.push({
         $match: {
-          'followup.followupDate': { $lt: new Date() }
+          'followup.isCompleted': true
         }
       });
-    } else if (status === 'today') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+    } else {
+      // Not completed
+      pipeline.push({
+        $match: {
+          'followup.isCompleted': false
+        }
+      });
 
-      pipeline.push({
-        $match: {
-          'followup.followupDate': { $gte: today, $lt: tomorrow }
-        }
-      });
-    } else if (status === 'upcoming') {
-      pipeline.push({
-        $match: {
-          'followup.followupDate': { $gt: new Date() }
-        }
-      });
+      if (status === 'missed') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        pipeline.push({
+          $match: {
+            'followup.followupDate': { $lt: today }
+          }
+        });
+      } else if (status === 'today') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        pipeline.push({
+          $match: {
+            'followup.followupDate': { $gte: today, $lt: tomorrow }
+          }
+        });
+      } else if (status === 'upcoming') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        pipeline.push({
+          $match: {
+            'followup.followupDate': { $gte: tomorrow }
+          }
+        });
+      }
     }
 
     // Add lookups for lead data
@@ -430,10 +448,11 @@ exports.getReminders = async (req, res) => {
         notes: followup?.notes || reminder.message,
         reminderDate: reminder.reminderDate.toISOString().split('T')[0],
         reminderTime: reminder.reminderDate.toTimeString().split(' ')[0].substring(0, 5),
-        isSent: reminder.isSent,
+        isSent: reminder.isSent, // notification sent
+        isCompleted: followup?.isCompleted || false, // task completed
         sentAt: reminder.sentAt,
         type: 'Followup',
-        priority: followup?.followupDate < new Date() && !reminder.isSent ? 'High' : 'Medium'
+        priority: followup?.followupDate < new Date() && !followup?.isCompleted ? 'High' : 'Medium'
       };
     });
 

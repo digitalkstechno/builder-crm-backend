@@ -23,6 +23,9 @@ var server = http.createServer(app);
 const { init } = require("../utils/socket");
 init(server);
 
+const { initScheduler } = require("../utils/scheduler");
+initScheduler();
+
 
 /**
  * Listen on provided port, on all network interfaces.

@@ -23,6 +23,13 @@ module.exports = {
         console.error(`!!! Socket Error [${socket.id}]:`, err);
       });
       
+      socket.on("join", (userId) => {
+        if (userId) {
+          socket.join(userId.toString());
+          console.log(`>>> USER JOINED ROOM: ${userId} (Socket: ${socket.id})`);
+        }
+      });
+
       socket.on("disconnect", (reason) => {
         console.log(`<<< DISCONNECTED: ${socket.id} (Reason: ${reason})`);
       });

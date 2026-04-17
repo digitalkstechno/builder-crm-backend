@@ -82,7 +82,7 @@ exports.createLeadService = async (userId, leadData) => {
         await notification.save();
 
         const io = getIO();
-        io.emit("newLeadAssigned", {
+        io.to(agent.userId.toString()).emit("newLeadAssigned", {
           notification,
           agentId: finalAgentId,
           leadId: savedLead._id,
@@ -284,7 +284,7 @@ exports.updateLeadService = async (leadId, userId, updateData) => {
       await notification.save();
 
       const io = getIO();
-      io.emit("leadReassigned", {
+      io.to(updatedLead.agentId.userId.toString()).emit("leadReassigned", {
         notification,
         agentId: updatedLead.agentId._id,
         leadId: updatedLead._id,
@@ -453,16 +453,15 @@ exports.createFollowupService = async (userId, followupData) => {
 
   const savedFollowup = await newFollowup.save();
 
-  // Create a reminder for this followup (remind 1 day before)
+  // Create a reminder for this followup at the exact time
   const reminderDate = new Date(followupDateTime);
-  reminderDate.setDate(reminderDate.getDate() - 1);
 
   const reminder = new Reminder({
     builderId,
     leadId,
     followupId: savedFollowup._id,
     reminderDate,
-    message: `Followup reminder for ${lead.name} - ${notes}`,
+    message: `Scheduled followup for ${lead.name}`,
   });
 
   await reminder.save();
