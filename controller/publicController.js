@@ -360,7 +360,11 @@ const getBuilderSites = async (req, res) => {
     if (propertyType) {
       const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
       console.log("DEBUG: getBuilderSites : pt found:", pt);
-      if (!pt) return res.status(200).json({ status: "Success", data: [] });
+      if (!pt) {
+        const allPTs = await PropertyType.find({ builderId, isDeleted: false }, "name");
+        console.log("DEBUG: getBuilderSites : PropertyType '" + propertyType + "' not found. Available types for this builder:", allPTs);
+        return res.status(200).json({ status: "Success", data: [] });
+      }
       query.propertyTypes = pt._id;
     }
 
