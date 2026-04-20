@@ -335,10 +335,13 @@ const getBuilderPublicProfile = async (req, res) => {
 const getBuilderSites = async (req, res) => {
   try {
     const { builderId } = req.params;
+    console.log("DEBUG: getBuilderSites : builderId:", builderId);
+
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
     const { requirementType, propertyType, budget, city, area } = req.query;
+    console.log("DEBUG: getBuilderSites : query params:", { requirementType, propertyType, budget, city, area });
 
     const query = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -349,18 +352,21 @@ const getBuilderSites = async (req, res) => {
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderSites : rt found:", rt);
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
       query.requirementTypes = rt._id;
     }
 
     if (propertyType) {
       const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderSites : pt found:", pt);
       if (!pt) return res.status(200).json({ status: "Success", data: [] });
       query.propertyTypes = pt._id;
     }
 
     if (budget) {
       const b = await Budget.findOne({ builderId, label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderSites : b found:", b);
       if (!b) return res.status(200).json({ status: "Success", data: [] });
       query.budgets = b._id;
     }
@@ -368,7 +374,9 @@ const getBuilderSites = async (req, res) => {
     if (city) query.city = { $regex: new RegExp(`^${city}$`, "i") };
     if (area) query.area = { $regex: new RegExp(`^${area}$`, "i") };
 
+    console.log("DEBUG: getBuilderSites : executing final query:", JSON.stringify(query));
     const sites = await Site.find(query, "name description images");
+    console.log("DEBUG: getBuilderSites : sites found count:", sites.length);
 
     const data = sites.map((s) => {
       const obj = s.toObject();
