@@ -43,10 +43,13 @@ const getSiteById = async (req, res) => {
 const getBuilderCities = async (req, res) => {
   try {
     const { builderId } = req.params;
+    console.log("DEBUG: getBuilderCities : builderId:", builderId);
+
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
     const { requirementType, propertyType, budget } = req.query;
+    console.log("DEBUG: getBuilderCities : query:", { requirementType, propertyType, budget });
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -57,27 +60,32 @@ const getBuilderCities = async (req, res) => {
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderCities : rt found:", rt);
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.requirementTypes = rt._id;
     }
 
     if (propertyType) {
-      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderCities : pt found:", pt);
       if (!pt) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.propertyTypes = pt._id;
     }
 
     if (budget) {
-      const b = await Budget.findOne({ label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      const b = await Budget.findOne({ builderId, label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderCities : b found:", b);
       if (!b) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.budgets = b._id;
     }
 
+    console.log("DEBUG: getBuilderCities : executing aggregate match:", JSON.stringify(siteQuery));
     const results = await Site.aggregate([
       { $match: siteQuery },
       { $group: { _id: "$city" } },
       { $sort: { _id: 1 } },
     ]);
+    console.log("DEBUG: getBuilderCities : results:", results);
 
     const data = results.map((r, i) => ({ _id: i + 1, name: r._id }));
 
@@ -90,10 +98,13 @@ const getBuilderCities = async (req, res) => {
 const getBuilderCityAreas = async (req, res) => {
   try {
     const { builderId, city } = req.params;
+    console.log("DEBUG: getBuilderCityAreas : builderId:", builderId, "city:", city);
+
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
     const { requirementType, propertyType, budget } = req.query;
+    console.log("DEBUG: getBuilderCityAreas : query:", { requirementType, propertyType, budget });
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -105,27 +116,32 @@ const getBuilderCityAreas = async (req, res) => {
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderCityAreas : rt found:", rt);
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.requirementTypes = rt._id;
     }
 
     if (propertyType) {
-      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderCityAreas : pt found:", pt);
       if (!pt) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.propertyTypes = pt._id;
     }
 
     if (budget) {
-      const b = await Budget.findOne({ label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      const b = await Budget.findOne({ builderId, label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderCityAreas : b found:", b);
       if (!b) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.budgets = b._id;
     }
 
+    console.log("DEBUG: getBuilderCityAreas : executing aggregate match:", JSON.stringify(siteQuery));
     const results = await Site.aggregate([
       { $match: siteQuery },
       { $group: { _id: "$area" } },
       { $sort: { _id: 1 } },
     ]);
+    console.log("DEBUG: getBuilderCityAreas : results:", results);
 
     const data = results.map((r, i) => ({ _id: i + 1, name: r._id }));
 
