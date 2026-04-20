@@ -15,6 +15,9 @@ exports.createSite = async (req, res) => {
 
     if (req.files) {
       if (req.files.images) {
+        if (req.files.images.length > 6) {
+          return res.status(400).json({ status: "Fail", message: "Maximum 6 images allowed" });
+        }
         imageUrls = req.files.images.map(file => `/uploads/${file.filename}`);
       }
       if (req.files.brochure && req.files.brochure.length > 0) {
@@ -158,6 +161,11 @@ exports.updateSite = async (req, res) => {
       } catch (e) {
         keptImages = [];
       }
+    }
+
+    // Validate total images
+    if (keptImages.length + newImageUrls.length > 6) {
+      return res.status(400).json({ status: "Fail", message: "Maximum 6 images allowed" });
     }
 
     const rtRaw = req.body['requirementTypes'];

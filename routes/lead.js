@@ -12,6 +12,7 @@ router.use(authMiddleware);
 router.post("/", leadController.createLead);
 router.get("/", leadController.fetchBuilderLeads);
 router.get("/today-counts", leadController.getTodayCounts);
+router.get("/dashboard-stats", leadController.getDashboardStats);
 router.get("/search", leadController.searchLeads);
 router.get("/statuses", leadController.getLeadStatuses);
 router.get("/staff-dropdown", leadController.getStaffDropdown);

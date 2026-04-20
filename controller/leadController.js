@@ -214,6 +214,106 @@ exports.deleteFollowup = async (req, res) => {
   }
 };
 
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const context = await resolveContext(req.user.id);
+    const { builderId, staffId, role, isTeamLeader, managedStaffIds } = context;
+
+    const Lead = require("../model/lead");
+    const Followup = require("../model/followup");
+    const Builder = require("../model/builder");
+    const mongoose = require("mongoose");
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const thisWeekStart = new Date(today);
+    thisWeekStart.setDate(today.getDate() - today.getDay());
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+    let baseQuery = { builderId, isDeleted: false };
+    if (role === 'STAFF') {
+      const ids = [staffId];
+      if (isTeamLeader) managedStaffIds.forEach(id => ids.push(id));
+      baseQuery.agentId = { $in: ids };
+    }
+
+    const [totalLeads, thisWeekLeads, lastWeekLeads, allLeads, todayFollowups, builderDoc] = await Promise.all([
+      Lead.countDocuments(baseQuery),
+      Lead.countDocuments({ ...baseQuery, createdAt: { $gte: thisWeekStart } }),
+      Lead.countDocuments({ ...baseQuery, createdAt: { $gte: lastWeekStart, $lt: thisWeekStart } }),
+      Lead.find(baseQuery, 'stageId stageName').lean(),
+      Followup.find({ builderId, isCompleted: false, followupDate: { $gte: today, $lt: tomorrow } })
+        .populate('leadId', 'name phone siteName budget')
+        .sort({ followupDate: 1 })
+        .limit(5)
+        .lean(),
+      Builder.findById(builderId, 'subscriptions').lean(),
+    ]);
+
+    // Lead funnel by stage
+    const stageCounts = {};
+    allLeads.forEach(l => {
+      const key = l.stageName || 'Unknown';
+      stageCounts[key] = (stageCounts[key] || 0) + 1;
+    });
+    const funnel = Object.entries(stageCounts)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+    const maxCount = funnel[0]?.count || 1;
+    const funnelWithPercent = funnel.map(f => ({ ...f, percent: Math.round((f.count / maxCount) * 100) }));
+
+    // Active subscription expiry
+    const activeSub = builderDoc?.subscriptions
+      ?.filter(s => s.status === 'active')
+      ?.sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0];
+
+    let planExpiry = null;
+    if (activeSub?.endDate) {
+      const end = new Date(activeSub.endDate);
+      const diffMs = end - new Date();
+      const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      planExpiry = {
+        planName: activeSub.planName,
+        endDate: activeSub.endDate,
+        daysLeft,
+        isExpired: daysLeft <= 0,
+        isUrgent: daysLeft <= 7 && daysLeft > 0,
+      };
+    }
+
+    const weekChange = lastWeekLeads > 0
+      ? Math.round(((thisWeekLeads - lastWeekLeads) / lastWeekLeads) * 100)
+      : thisWeekLeads > 0 ? 100 : 0;
+
+    return res.status(200).json({
+      status: "Success",
+      data: {
+        totalLeads,
+        thisWeekLeads,
+        weekChange,
+        todayFollowups: todayFollowups.map(f => ({
+          _id: f._id,
+          name: f.leadId?.name || 'Unknown',
+          phone: f.leadId?.phone || '',
+          site: f.leadId?.siteName || '',
+          budget: f.leadId?.budget || '',
+          time: new Date(f.followupDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          notes: f.notes || '',
+        })),
+        funnel: funnelWithPercent,
+        planExpiry,
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 exports.getTodayCounts = async (req, res) => {
   try {
     const context = await resolveContext(req.user.id);

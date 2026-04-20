@@ -7,7 +7,7 @@ const upload = require("../middleware/upload");
 router.use(authMiddleware);
 
 const uploadFields = upload.fields([
-  { name: 'images', maxCount: 10 },
+  { name: 'images', maxCount: 6 },
   { name: 'brochure', maxCount: 1 }
 ]);
 

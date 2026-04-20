@@ -19,5 +19,6 @@ router.use("/requirement-type", require("./requirementType"));
 router.use("/property-type", require("./propertyType"));
 router.use("/city-area", require("./cityArea"));
 router.use("/budget", require("./budget"));
+router.use("/admin-leads", require("./adminLeads"));
 
 module.exports = router;
