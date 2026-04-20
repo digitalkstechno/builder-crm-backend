@@ -4,6 +4,7 @@ const {
   deleteLeadService,
   updateLeadService,
   getLeadByIdService,
+  searchLeadsService,
   getLeadStatusesService,
   getStaffDropdownService,
   getSitesDropdownService,
@@ -80,6 +81,15 @@ exports.updateLead = async (req, res) => {
     });
   } catch (error) {
     return res.status(400).json({ status: "Fail", message: error.message });
+  }
+};
+
+exports.searchLeads = async (req, res) => {
+  try {
+    const leads = await searchLeadsService(req.user.id, req.query.q || '');
+    return res.status(200).json({ status: "Success", data: leads });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
   }
 };
 
@@ -476,19 +486,27 @@ exports.getReminders = async (req, res) => {
 exports.markReminderCompleted = async (req, res) => {
   try {
     const { id } = req.params;
-    const builder = await require("../model/builder").findOne({ userId: req.user.id });
-    if (!builder) throw new Error("Builder not found");
+    const { builderId } = await resolveContext(req.user.id);
 
-    const reminder = await require("../model/reminder").findOneAndUpdate(
-      { _id: id, builderId: builder._id, isDeleted: false },
-      {
-        isSent: true,
-        sentAt: new Date()
-      },
-      { new: true }
-    );
+    const Followup = require("../model/followup");
+    const reminder = await require("../model/reminder").findOne({
+      _id: id,
+      builderId,
+      isDeleted: false
+    });
 
     if (!reminder) throw new Error("Reminder not found");
+
+    // Mark the linked followup as completed
+    if (reminder.followupId) {
+      await Followup.findByIdAndUpdate(reminder.followupId, {
+        $set: { isCompleted: true, completedAt: new Date() }
+      });
+    }
+
+    await require("../model/reminder").findByIdAndUpdate(id, {
+      $set: { isSent: true, sentAt: new Date() }
+    });
 
     return res.status(200).json({
       status: "Success",

@@ -37,13 +37,19 @@ exports.createSite = async (req, res) => {
       ? Array.isArray(budgetsRaw) ? budgetsRaw : [budgetsRaw]
       : [];
 
-    const { requirementTypes: _rIgnore, propertyTypes: _pIgnore, ...restBody } = req.body;
+    const videoUrlsRaw = req.body['videoUrls'];
+    const videoUrls = videoUrlsRaw
+      ? Array.isArray(videoUrlsRaw) ? videoUrlsRaw : [videoUrlsRaw]
+      : [];
+
+    const { requirementTypes: _rIgnore, propertyTypes: _pIgnore, videoUrls: _vIgnore, ...restBody } = req.body;
 
     const siteData = {
       ...restBody,
       requirementTypes,
       propertyTypes,
       budgets,
+      videoUrls,
       images: imageUrls,
       brochureUrl
     };
@@ -169,13 +175,19 @@ exports.updateSite = async (req, res) => {
       ? Array.isArray(budgetsRaw) ? budgetsRaw : [budgetsRaw]
       : [];
 
-    const { requirementTypes: _rIgnore, propertyTypes: _pIgnore, budgets: _bIgnore, keptImages: _ki, ...restBody } = req.body;
+    const videoUrlsRaw = req.body['videoUrls'];
+    const videoUrls = videoUrlsRaw
+      ? Array.isArray(videoUrlsRaw) ? videoUrlsRaw : [videoUrlsRaw]
+      : [];
+
+    const { requirementTypes: _rIgnore, propertyTypes: _pIgnore, budgets: _bIgnore, keptImages: _ki, videoUrls: _vIgnore, ...restBody } = req.body;
 
     const updateData = {
       ...restBody,
       requirementTypes,
       propertyTypes,
       budgets,
+      videoUrls,
       images: [...keptImages, ...newImageUrls],
       brochureUrl
     };

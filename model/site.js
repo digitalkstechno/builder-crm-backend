@@ -29,8 +29,10 @@ const SiteSchema = new mongoose.Schema(
     },
 
     address: { type: String },
+    mapUrl: { type: String },
     amenities: [{ type: String }],
     videoUrl: { type: String },
+    videoUrls: [{ type: String }],
     brochureUrl: { type: String },
     images: [{ type: String }],
     builderId: {

@@ -330,17 +330,59 @@ exports.deleteLeadService = async (leadId, builderUserId) => {
 };
 
 exports.getLeadByIdService = async (leadId, builderUserId) => {
-  const builder = await Builder.findOne({ userId: builderUserId });
-  if (!builder) throw new Error("Builder not found");
+  const context = await resolveContext(builderUserId);
+  const { builderId } = context;
 
-  const lead = await Lead.findOne({ _id: leadId, builderId: builder._id, isDeleted: false })
+  const lead = await Lead.findOne({ _id: leadId, builderId, isDeleted: false })
     .populate('stageId', 'name color')
-    .populate('agentId', 'userId')
-    .populate('siteId', 'name');
+    .populate('agentId', 'userId staffRole')
+    .populate('siteId', 'name city area');
 
   if (!lead) throw new Error("Lead not found");
 
-  return lead;
+  const followups = await Followup.find({ leadId, builderId, isDeleted: false })
+    .populate('createdBy', 'fullName')
+    .sort({ followupDate: -1 });
+
+  return {
+    _id: lead._id,
+    name: lead.name,
+    phone: lead.phone,
+    source: lead.source,
+    budget: lead.budget,
+    notes: lead.notes,
+    createdAt: lead.createdAt,
+    site: lead.siteId ? { _id: lead.siteId._id, name: lead.siteId.name, city: lead.siteId.city, area: lead.siteId.area } : { name: lead.siteName },
+    stage: lead.stageId ? { _id: lead.stageId._id, name: lead.stageId.name, color: lead.stageId.color } : { name: lead.stageName },
+    agent: lead.agentId ? { _id: lead.agentId._id, name: lead.agentName, role: lead.agentId.staffRole } : null,
+    followups: followups.map(f => ({
+      _id: f._id,
+      followupDate: f.followupDate,
+      notes: f.notes,
+      isCompleted: f.isCompleted,
+      completedAt: f.completedAt,
+      createdBy: f.createdBy?.fullName || 'Unknown',
+      createdAt: f.createdAt,
+    }))
+  };
+};
+
+exports.searchLeadsService = async (userId, query) => {
+  const context = await resolveContext(userId);
+  const { builderId, staffId, role } = context;
+
+  let filter = { builderId, isDeleted: false };
+  if (role === 'STAFF') filter.agentId = staffId;
+
+  if (query) {
+    filter.$or = [
+      { name: { $regex: query, $options: 'i' } },
+      { phone: { $regex: query, $options: 'i' } },
+    ];
+  }
+
+  const leads = await Lead.find(filter).limit(8).sort({ createdAt: -1 }).select('name phone siteName stageName');
+  return leads;
 };
 
 // Get all lead statuses for dropdown
