@@ -235,7 +235,7 @@ const getBuilderRequirementTypes = async (req, res) => {
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
     const sites = await Site.find(
-      { builderId, isDeleted: false, deleteRequested: false, isActive: true },
+      { builderId: new mongoose.Types.ObjectId(builderId), isDeleted: false, deleteRequested: false, isActive: true },
       "requirementTypes"
     );
 
@@ -260,12 +260,17 @@ const getBuilderPropertyTypes = async (req, res) => {
 
     const { requirementType } = req.query;
 
-    const siteQuery = { builderId, isDeleted: false, deleteRequested: false, isActive: true };
+    const siteQuery = {
+      builderId: new mongoose.Types.ObjectId(builderId),
+      isDeleted: false,
+      deleteRequested: false,
+      isActive: true
+    };
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
-      siteQuery.requirementTypes = rt._id;
+      siteQuery.requirementTypes = { $in: [rt._id] };
     }
 
     const sites = await Site.find(siteQuery, "propertyTypes");
@@ -374,18 +379,23 @@ const getBuilderBudgets = async (req, res) => {
 
     const { requirementType, propertyType } = req.query;
 
-    const siteQuery = { builderId, isDeleted: false, deleteRequested: false, isActive: true };
+    const siteQuery = {
+      builderId: new mongoose.Types.ObjectId(builderId),
+      isDeleted: false,
+      deleteRequested: false,
+      isActive: true
+    };
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
-      siteQuery.requirementTypes = rt._id;
+      siteQuery.requirementTypes = { $in: [rt._id] };
     }
 
     if (propertyType) {
       const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
       if (!pt) return res.status(200).json({ status: "Success", data: [] });
-      siteQuery.propertyTypes = pt._id;
+      siteQuery.propertyTypes = { $in: [pt._id] };
     }
 
     const sites = await Site.find(siteQuery, "budgets");
