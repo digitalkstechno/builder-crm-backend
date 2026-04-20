@@ -56,7 +56,7 @@ const getBuilderCities = async (req, res) => {
     };
 
     if (requirementType) {
-      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.requirementTypes = rt._id;
     }
@@ -104,7 +104,7 @@ const getBuilderCityAreas = async (req, res) => {
     };
 
     if (requirementType) {
-      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
       siteQuery.requirementTypes = rt._id;
     }
@@ -255,10 +255,13 @@ const getBuilderRequirementTypes = async (req, res) => {
 const getBuilderPropertyTypes = async (req, res) => {
   try {
     const { builderId } = req.params;
+    console.log("DEBUG: getBuilderPropertyTypes : builderId:", builderId);
+
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
     const { requirementType } = req.query;
+    console.log("DEBUG: getBuilderPropertyTypes : requirementType query:", requirementType);
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -268,19 +271,24 @@ const getBuilderPropertyTypes = async (req, res) => {
     };
 
     if (requirementType) {
-      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      console.log("DEBUG: getBuilderPropertyTypes : rt found:", rt);
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
-      siteQuery.requirementTypes = { $in: [rt._id] };
+      siteQuery.requirementTypes = rt._id;
     }
 
+    console.log("DEBUG: getBuilderPropertyTypes : executing siteQuery:", JSON.stringify(siteQuery));
     const sites = await Site.find(siteQuery, "propertyTypes");
+    console.log("DEBUG: getBuilderPropertyTypes : sites count found:", sites.length);
 
     const uniqueIds = [...new Set(sites.flatMap((s) => s.propertyTypes.map((id) => id.toString())))];
+    console.log("DEBUG: getBuilderPropertyTypes : unique PropertyType IDs:", uniqueIds);
 
     const propertyTypes = await PropertyType.find(
       { _id: { $in: uniqueIds }, isDeleted: false },
       "_id name"
     );
+    console.log("DEBUG: getBuilderPropertyTypes : final propertyTypes count:", propertyTypes.length);
 
     return res.status(200).json({ status: "Success", data: propertyTypes });
   } catch (error) {
@@ -324,19 +332,19 @@ const getBuilderSites = async (req, res) => {
     };
 
     if (requirementType) {
-      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
       query.requirementTypes = rt._id;
     }
 
     if (propertyType) {
-      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
       if (!pt) return res.status(200).json({ status: "Success", data: [] });
       query.propertyTypes = pt._id;
     }
 
     if (budget) {
-      const b = await Budget.findOne({ label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      const b = await Budget.findOne({ builderId, label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
       if (!b) return res.status(200).json({ status: "Success", data: [] });
       query.budgets = b._id;
     }
@@ -387,15 +395,15 @@ const getBuilderBudgets = async (req, res) => {
     };
 
     if (requirementType) {
-      const rt = await RequirementType.findOne({ name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
       if (!rt) return res.status(200).json({ status: "Success", data: [] });
-      siteQuery.requirementTypes = { $in: [rt._id] };
+      siteQuery.requirementTypes = rt._id;
     }
 
     if (propertyType) {
-      const pt = await PropertyType.findOne({ name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
       if (!pt) return res.status(200).json({ status: "Success", data: [] });
-      siteQuery.propertyTypes = { $in: [pt._id] };
+      siteQuery.propertyTypes = pt._id;
     }
 
     const sites = await Site.find(siteQuery, "budgets");
