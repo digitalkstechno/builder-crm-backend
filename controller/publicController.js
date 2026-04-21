@@ -183,8 +183,8 @@ const createPublicLead = async (req, res) => {
       return res.status(401).json({ status: "Fail", message: "Invalid credentials" });
     }
 
-    const { name, phone, bid, siteId, requirementType, propertyType, budget, city, area } = req.body;
-    const builderId = bid;
+    const { name, phone, bid, builderId: bodyBuilderId, siteId, requirementType, propertyType, budget, city, area } = req.body;
+    const builderId = bid || bodyBuilderId;
     console.log("DEBUG : createPublicLead : req.body:", req.body);
 
     if (!name || !phone) {
@@ -569,8 +569,12 @@ const updatePublicLeadWithDetails = async (req, res) => {
     }
 
     const lead = await Lead.findOneAndUpdate(
-      { _id: leadId, builderId, isDeleted: false },
-      updateData,
+      { 
+        _id: leadId, 
+        isDeleted: false,
+        $or: [{ builderId }, { builderId: { $exists: false } }, { builderId: null }]
+      },
+      { ...updateData, builderId },
       { new: true }
     );
 

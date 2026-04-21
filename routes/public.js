@@ -15,6 +15,7 @@ router.get("/builders/:builderId/cities/:city/areas", getBuilderCityAreas);
 router.get("/builders/:builderId/sites", getBuilderSites);
 // router.post("/builders/:builderId/leads", createPublicLeadWithDetails);
 router.patch("/builders/:builderId/leads/:leadId", updatePublicLeadWithDetails);
+router.post("/builders/:builderId/leads/:leadId", updatePublicLeadWithDetails);
 
 
 
