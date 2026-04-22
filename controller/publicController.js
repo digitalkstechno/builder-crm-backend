@@ -446,12 +446,7 @@ const getBuilderSitesMsg = async (req, res) => {
 
     const sites = await Site.find(query, "name description images");
 
-    const images = sites.map((s) => ({
-      id: s._id,
-      img: s.images && s.images.length > 0 ? `${process.env.API_BASE_URL}${s.images[0]}` : null,
-    })).filter(item => item.img !== null);
-
-    const msg = sites.map((s, index) => {
+    const data = sites.map((s, index) => {
       let desc = s.description || "";
       desc = desc
         .replace(/<[^>]*>/g, "")
@@ -462,10 +457,18 @@ const getBuilderSitesMsg = async (req, res) => {
         .replace(/&quot;/g, '"')
         .replace(/\s+/g, " ")
         .trim();
-      return `${index + 1}. ${s.name} Description : ${desc}`;
-    }).join(" ");
 
-    return res.status(200).json({ status: "Success", data: { images, msg } });
+      return {
+        id: s._id,
+        titlle: s.name,
+        decsption: desc,
+        images: (s.images || [])
+          .map((img, imgIndex) => `${imgIndex + 1}. ${process.env.API_BASE_URL}${img}`)
+          .join(" "),
+      };
+    });
+
+    return res.status(200).json({ status: "Success", data });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
