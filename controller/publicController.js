@@ -446,29 +446,31 @@ const getBuilderSitesMsg = async (req, res) => {
 
     const sites = await Site.find(query, "name description images");
 
-    const data = sites.map((s, index) => {
-      let desc = s.description || "";
-      desc = desc
-        .replace(/<[^>]*>/g, "")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, " ")
-        .trim();
+    const msg = sites
+      .map((s, index) => {
+        let desc = s.description || "";
+        desc = desc
+          .replace(/<[^>]*>/g, "")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/\s+/g, " ")
+          .trim();
 
-      return {
-        id: s._id,
-        titlle: s.name,
-        decsption: desc,
-        images: (s.images || [])
-          .map((img, imgIndex) => `${imgIndex + 1}. ${process.env.API_BASE_URL}${img}`)
-          .join(" "),
-      };
-    });
+        const imagesPart =
+          s.images && s.images.length > 0
+            ? `\n\n*Images:*\n${s.images
+                .map((img, i) => `${i + 1}. ${process.env.API_BASE_URL}${img}`)
+                .join("\n")}`
+            : "";
 
-    return res.status(200).json({ status: "Success", data });
+        return `*${index + 1}. ${s.name}*\n${desc}${imagesPart}`;
+      })
+      .join("\n\n---\n\n");
+
+    return res.status(200).json({ status: "Success", data: { msg } });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
