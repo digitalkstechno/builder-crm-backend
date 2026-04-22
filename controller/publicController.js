@@ -407,6 +407,70 @@ const getBuilderSites = async (req, res) => {
   }
 };
 
+const getBuilderSitesMsg = async (req, res) => {
+  try {
+    const { builderId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(builderId))
+      return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
+
+    const { requirementType, propertyType, budget, city, area } = req.query;
+
+    const query = {
+      builderId: new mongoose.Types.ObjectId(builderId),
+      isDeleted: false,
+      deleteRequested: false,
+      isActive: true,
+    };
+
+    if (requirementType) {
+      const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
+      if (!rt) return res.status(200).json({ status: "Success", data: { images: [], msg: "" } });
+      query.requirementTypes = rt._id;
+    }
+
+    if (propertyType) {
+      const pt = await PropertyType.findOne({ builderId, name: { $regex: new RegExp(`^${propertyType}$`, "i") }, isDeleted: false }, "_id");
+      if (!pt) return res.status(200).json({ status: "Success", data: { images: [], msg: "" } });
+      query.propertyTypes = pt._id;
+    }
+
+    if (budget) {
+      const b = await Budget.findOne({ builderId, label: { $regex: new RegExp(`^${budget}$`, "i") }, isDeleted: false }, "_id");
+      if (!b) return res.status(200).json({ status: "Success", data: { images: [], msg: "" } });
+      query.budgets = b._id;
+    }
+
+    if (city) query.city = { $regex: new RegExp(`^${city}$`, "i") };
+    if (area) query.area = { $regex: new RegExp(`^${area}$`, "i") };
+
+    const sites = await Site.find(query, "name description images");
+
+    const images = sites.map((s) => ({
+      id: s._id,
+      img: s.images && s.images.length > 0 ? `${process.env.API_BASE_URL}${s.images[0]}` : null,
+    })).filter(item => item.img !== null);
+
+    const msg = sites.map((s, index) => {
+      let desc = s.description || "";
+      desc = desc
+        .replace(/<[^>]*>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, " ")
+        .trim();
+      return `${index + 1}. ${s.name} Description : ${desc}`;
+    }).join(" ");
+
+    return res.status(200).json({ status: "Success", data: { images, msg } });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 const getBuilderBudgets = async (req, res) => {
   try {
     const { builderId } = req.params;
@@ -586,6 +650,86 @@ const updatePublicLeadWithDetails = async (req, res) => {
   }
 };
 
+const updatePublicLeadByPhone = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Basic ")) {
+      return res.status(401).json({ status: "Fail", message: "Unauthorized" });
+    }
+
+    const base64 = authHeader.split(" ")[1];
+    const [username, password] = Buffer.from(base64, "base64").toString().split(":");
+
+    if (username !== process.env.BASIC_AUTH_USER || password !== process.env.BASIC_AUTH_PASS) {
+      return res.status(401).json({ status: "Fail", message: "Invalid credentials" });
+    }
+
+    const { builderId, phone } = req.params;
+    const { name } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(builderId))
+      return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
+
+    const findQuery = {
+      phone,
+      builderId,
+      isDeleted: false,
+    };
+
+    if (name) {
+      findQuery.name = { $regex: new RegExp(`^${name}$`, "i") };
+    }
+
+    // Find the latest lead
+    const latestLead = await Lead.findOne(findQuery).sort({ createdAt: -1 });
+
+    if (!latestLead) {
+      return res.status(404).json({ status: "Fail", message: "Lead not found" });
+    }
+
+    const { siteId, requirementType, propertyType, budget, city, area, site } = req.body;
+
+    const updateData = {
+      ...(budget && { budget }),
+      ...(requirementType && mongoose.Types.ObjectId.isValid(requirementType) && { requirementType }),
+      ...(propertyType && mongoose.Types.ObjectId.isValid(propertyType) && { propertyType }),
+      ...(city && { city }),
+      ...(area && { area }),
+    };
+
+    const resolvedSiteId = siteId || (site ? (await Site.findOne({ name: { $regex: new RegExp(`^${site}$`, "i") }, builderId, isDeleted: false }, "_id"))?.id : null);
+
+    if (resolvedSiteId) {
+      const siteDoc = await Site.findById(resolvedSiteId, "name teamId");
+      if (siteDoc) {
+        updateData.siteId = resolvedSiteId;
+        updateData.siteName = siteDoc.name;
+        if (siteDoc.teamId) {
+          const team = await Team.findOne({ _id: siteDoc.teamId, isDeleted: false }, "leaderId");
+          if (team && team.leaderId) {
+            const leaderStaff = await Staff.findById(team.leaderId, "userId");
+            if (leaderStaff) {
+              const leaderUser = await User.findById(leaderStaff.userId, "fullName");
+              updateData.agentId = team.leaderId;
+              updateData.agentName = leaderUser ? leaderUser.fullName : null;
+            }
+          }
+        }
+      }
+    }
+
+    const lead = await Lead.findByIdAndUpdate(
+      latestLead._id,
+      updateData,
+      { new: true }
+    );
+
+    return res.status(200).json({ status: "Success", data: lead });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 const createInquiry = async (req, res) => {
   try {
     const { name, phone, siteId, builderId, message } = req.body;
@@ -672,7 +816,9 @@ module.exports = {
   getBuilderPropertyTypes,
   getBuilderBudgets,
   getBuilderSites,
+  getBuilderSitesMsg,
   getBuilderPublicProfile,
   createPublicLeadWithDetails,
   updatePublicLeadWithDetails,
+  updatePublicLeadByPhone,
 };
