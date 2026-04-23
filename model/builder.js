@@ -50,6 +50,9 @@ const BuilderSchema = new mongoose.Schema(
       email: { type: String },
       logo: { type: String },
       heroImage: { type: String },
+      yearsActive: { type: String, default: "0+" },
+      cities: { type: String, default: "0+" },
+      happyClients: { type: String, default: "0+" },
       socialLinks: {
         facebook: { type: String },
         instagram: { type: String },

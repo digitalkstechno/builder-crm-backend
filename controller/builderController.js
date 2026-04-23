@@ -784,7 +784,7 @@ const getWebsiteDetails = async (req, res) => {
 const updateWebsiteDetails = async (req, res) => {
   try {
     const { builderId } = req.params;
-    let { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks, companyName, address } = req.body;
+    let { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks, companyName, address, yearsActive, cities, happyClients } = req.body;
 
     // Handle file uploads
     if (req.files) {
@@ -806,7 +806,7 @@ const updateWebsiteDetails = async (req, res) => {
     }
 
     const updateData = {
-      websiteDetails: { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks }
+      websiteDetails: { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks, yearsActive, cities, happyClients }
     };
 
     if (companyName) updateData.companyName = companyName;
