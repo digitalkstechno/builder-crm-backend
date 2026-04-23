@@ -8,8 +8,10 @@ exports.updateWhatsappConfig = async (req, res) => {
       return res.status(400).json({ status: "Fail", message: "Number and BuilderId are required" });
     }
 
-    // Format number: Always prepend 91 to the 10-digit number from frontend
-    number = "91" + number.replace(/\D/g, "");
+    // Extract digits from the input (handles "Name (91XXXXXXXXXX)" or just digits)
+    let digits = number.replace(/\D/g, "");
+    // If 10 digits, prepend 91. If already 12+ digits (like with 91), use as is.
+    number = digits.length === 10 ? "91" + digits : digits;
 
     const updatedConfig = await WhatsappConfig.findOneAndUpdate(
       { number },
@@ -38,8 +40,10 @@ exports.getWhatsappConfigByNumber = async (req, res) => {
   try {
     let { number } = req.params;
 
-    // Format number: Always prepend 91 to the 10-digit number for search
-    number = "91" + number.replace(/\D/g, "");
+    // Extract digits from the input (handles "Name (91XXXXXXXXXX)" or just digits)
+    let digits = number.replace(/\D/g, "");
+    // If 10 digits, prepend 91. If already 12+ digits (like with 91), use as is.
+    number = digits.length === 10 ? "91" + digits : digits;
 
     const config = await WhatsappConfig.findOne({ number, isDeleted: false });
     

@@ -360,9 +360,15 @@ const getBuilderSites = async (req, res) => {
     const { requirementType, propertyType, budget, city, area, number, to } = req.query;
 
     if (number && to) {
+      console.log("DEBUG: getBuilderSites WhatsApp flow started", { number, to, builderId });
+      
       // Find WhatsappConfig for hub number
       const config = await WhatsappConfig.findOne({ number, isDeleted: false });
-      if (!config) return res.status(200).json({ status: "Success", data: true });
+      if (!config) {
+        console.log("DEBUG: WhatsappConfig NOT found for number:", number);
+        return res.status(200).json({ status: "Success", data: true });
+      }
+      console.log("DEBUG: WhatsappConfig found:", { phoneNumberId: config.phoneNumberId, version: config.apiVersion });
 
       // Find sites for this hub number
       const sites = await Site.find({ 
@@ -371,9 +377,10 @@ const getBuilderSites = async (req, res) => {
         isDeleted: false,
         isActive: true 
       });
+      console.log(`DEBUG: Found ${sites.length} sites for number ${number}`);
 
       for (const site of sites) {
-        const siteUrl = `https://builder.digitalks.co.in/property/${site._id}`;
+        const siteUrl = `${process.env.FRONT_URL}/property/${site._id}`;
         let desc = site.description || "";
         desc = desc
           .replace(/<[^>]*>/g, "")
@@ -385,7 +392,12 @@ const getBuilderSites = async (req, res) => {
           .replace(/\s+/g, " ")
           .trim();
 
-        const caption = `*${site.name}*\n*${desc}*\n\n*For more info : - ${siteUrl}*`;
+        // Truncate description to ~150 characters (approx 2 lines)
+        if (desc.length > 150) {
+          desc = desc.substring(0, 147) + "...";
+        }
+
+        const caption = `*${site.name}*\n${desc}\n\n*For more info : - ${siteUrl}*`;
         const imageLink = site.images && site.images.length > 0 ? `https://builder.digitalks.co.in/api${site.images[0]}` : "";
 
         const payload = new URLSearchParams();
@@ -397,18 +409,22 @@ const getBuilderSites = async (req, res) => {
         payload.append('token', config.accessToken || "");
 
         try {
-          await fetch('https://test.insuraa.in/whatsapp/send_image_msg', {
+          console.log(`DEBUG: Sending WhatsApp message for site: ${site.name} to: ${to}`);
+          const response = await fetch('https://test.insuraa.in/whatsapp/send_image_msg', {
             method: 'POST',
             body: payload,
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded'
             }
           });
+          const result = await response.json();
+          console.log(`DEBUG: WhatsApp API response for ${site.name}:`, result);
         } catch (err) {
-          console.error("Error sending whatsapp message for site:", site._id, err.message);
+          console.error("DEBUG: Error sending whatsapp message for site:", site._id, err.message);
         }
       }
 
+      console.log("DEBUG: getBuilderSites WhatsApp flow completed");
       return res.status(200).json({ status: "Success", data: true });
     }
 
@@ -486,7 +502,7 @@ const getBuilderSitesMsg = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const { requirementType, propertyType, budget, city, area } = req.query;
+    const { requirementType, propertyType, budget, city, area, number } = req.query;
 
     const query = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -494,6 +510,10 @@ const getBuilderSitesMsg = async (req, res) => {
       deleteRequested: false,
       isActive: true,
     };
+
+    if (number) {
+      query.whatsappNumber = { $regex: number, $options: "i" };
+    }
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
