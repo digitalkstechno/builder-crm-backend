@@ -1,9 +1,7 @@
 const Whatsapp = require("../model/whatsapp");
 const Builder = require("../model/builder");
 
-exports.createWhatsappService = async (builderUserId, whatsappData) => {
-  const { name, number } = whatsappData;
-
+exports.createWhatsappService = async (builderUserId, { name, number }) => {
   // 1. Find the builder
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
