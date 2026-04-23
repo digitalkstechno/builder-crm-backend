@@ -50,8 +50,8 @@ const getBuilderCities = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const { requirementType, propertyType, budget } = req.query;
-    console.log("DEBUG: getBuilderCities : query:", { requirementType, propertyType, budget });
+    const { requirementType, propertyType, budget, number } = req.query;
+    console.log("DEBUG: getBuilderCities : query:", { requirementType, propertyType, budget, number });
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -59,6 +59,10 @@ const getBuilderCities = async (req, res) => {
       deleteRequested: false,
       isActive: true,
     };
+
+    if (number) {
+      siteQuery.whatsappNumber = { $regex: number, $options: "i" };
+    }
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
@@ -105,8 +109,8 @@ const getBuilderCityAreas = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const { requirementType, propertyType, budget } = req.query;
-    console.log("DEBUG: getBuilderCityAreas : query:", { requirementType, propertyType, budget });
+    const { requirementType, propertyType, budget, number } = req.query;
+    console.log("DEBUG: getBuilderCityAreas : query:", { requirementType, propertyType, budget, number });
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -115,6 +119,10 @@ const getBuilderCityAreas = async (req, res) => {
       deleteRequested: false,
       isActive: true,
     };
+
+    if (number) {
+      siteQuery.whatsappNumber = { $regex: number, $options: "i" };
+    }
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
@@ -269,11 +277,16 @@ const createPublicLead = async (req, res) => {
 const getBuilderRequirementTypes = async (req, res) => {
   try {
     const { builderId } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(builderId))
-      return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
+    const { number } = req.query;
 
     const sites = await Site.find(
-      { builderId: new mongoose.Types.ObjectId(builderId), isDeleted: false, deleteRequested: false, isActive: true },
+      { 
+        builderId: new mongoose.Types.ObjectId(builderId), 
+        isDeleted: false, 
+        deleteRequested: false, 
+        isActive: true,
+        ...(number && { whatsappNumber: { $regex: number, $options: "i" } })
+      },
       "requirementTypes"
     );
 
@@ -298,8 +311,8 @@ const getBuilderPropertyTypes = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const { requirementType } = req.query;
-    console.log("DEBUG: getBuilderPropertyTypes : requirementType query:", requirementType);
+    const { requirementType, number } = req.query;
+    console.log("DEBUG: getBuilderPropertyTypes : query:", { requirementType, number });
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -307,6 +320,10 @@ const getBuilderPropertyTypes = async (req, res) => {
       deleteRequested: false,
       isActive: true
     };
+
+    if (number) {
+      siteQuery.whatsappNumber = { $regex: number, $options: "i" };
+    }
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
@@ -574,7 +591,7 @@ const getBuilderBudgets = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const { requirementType, propertyType } = req.query;
+    const { requirementType, propertyType, number } = req.query;
 
     const siteQuery = {
       builderId: new mongoose.Types.ObjectId(builderId),
@@ -582,6 +599,10 @@ const getBuilderBudgets = async (req, res) => {
       deleteRequested: false,
       isActive: true
     };
+
+    if (number) {
+      siteQuery.whatsappNumber = { $regex: number, $options: "i" };
+    }
 
     if (requirementType) {
       const rt = await RequirementType.findOne({ builderId, name: { $regex: new RegExp(`^${requirementType}$`, "i") }, isDeleted: false }, "_id");
