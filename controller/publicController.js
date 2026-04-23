@@ -164,35 +164,56 @@ const getBuilderCityAreas = async (req, res) => {
 const getUserIdByPhone = async (req, res) => {
   try {
     const { phone } = req.params;
+    console.log("DEBUG: getUserIdByPhone called with:", phone);
     let userId = null;
     let builderId = null;
 
     // 1. Check in User model
     const user = await User.findOne({ phone, isDeleted: false }, "_id builderId role");
     if (user) {
+      console.log("DEBUG: User found in User model:", { id: user._id, role: user.role });
       userId = user._id;
       builderId = user.builderId;
       
       if (user.role === "BUILDER") {
         const builder = await Builder.findOne({ userId: user._id, isDeleted: false }, "_id");
-        if (builder) builderId = builder._id;
+        if (builder) {
+          builderId = builder._id;
+          console.log("DEBUG: Builder record found for user, builderId:", builderId);
+        }
       }
     }
 
     // 2. If builderId still not found, check in Whatsapp model
     if (!builderId) {
       const searchNum = phone.replace(/\D/g, "");
-      // Always search with 91 prefix in Whatsapp model
-      const whatsapp = await Whatsapp.findOne({ searchNum, isDeleted: false }, "builderId");
+      console.log("DEBUG: builderId not found in User, checking Whatsapp model with number:", searchNum);
+      
+      // We search for the number exactly as it was provided (after removing non-digits)
+      const whatsapp = await Whatsapp.findOne({ number: searchNum, isDeleted: false }, "builderId");
       if (whatsapp) {
         builderId = whatsapp.builderId;
+        console.log("DEBUG: Hub found in Whatsapp model, builderId:", builderId);
+      } else {
+        // Try with 91 prefix if not already present
+        const withPrefix = searchNum.startsWith("91") ? searchNum : "91" + searchNum;
+        if (withPrefix !== searchNum) {
+           console.log("DEBUG: Hub not found with original digits, trying with 91 prefix:", withPrefix);
+           const whatsappWithPrefix = await Whatsapp.findOne({ number: withPrefix, isDeleted: false }, "builderId");
+           if (whatsappWithPrefix) {
+             builderId = whatsappWithPrefix.builderId;
+             console.log("DEBUG: Hub found in Whatsapp model with 91 prefix, builderId:", builderId);
+           }
+        }
       }
     }
 
     if (!userId && !builderId) {
+      console.log("DEBUG: No user or builderId resolved for phone:", phone);
       return res.status(404).json({ status: "Fail", message: "User not found" });
     }
 
+    console.log("DEBUG: Final resolved data:", { userId, builderId });
     return res.status(200).json({ status: "Success", data: { _id: userId, builderId } });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
