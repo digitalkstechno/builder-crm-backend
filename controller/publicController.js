@@ -22,6 +22,15 @@ const getDefaultStage = async (builderId) => {
   return status;
 };
 
+const checkBuilderSubscription = async (builderId) => {
+  const builder = await Builder.findOne({ _id: builderId, isDeleted: false });
+  if (!builder) return false;
+  
+  // Check if there is at least one active subscription
+  const hasActiveSub = builder.subscriptions.some(s => s.status === 'active');
+  return hasActiveSub;
+};
+
 const getSiteById = async (req, res) => {
   try {
     const { siteId } = req.params;
@@ -32,9 +41,19 @@ const getSiteById = async (req, res) => {
       .populate("propertyTypes", "name")
       .populate("requirementTypes", "name")
       .populate("budgets", "label minAmount maxAmount")
-      .populate("builderId", "companyName address websiteDetails");
+      .populate("builderId", "companyName address websiteDetails subscriptions");
 
     if (!site) return res.status(404).json({ status: "Fail", message: "Site not found" });
+
+    // Check builder subscription
+    const builder = site.builderId;
+    if (!builder || !builder.subscriptions.some(s => s.status === 'active')) {
+      return res.status(403).json({ 
+        status: "Fail", 
+        message: "This site is currently unavailable due to subscription expiry.",
+        type: "SUBSCRIPTION_EXPIRED"
+      });
+    }
 
     return res.status(200).json({ status: "Success", data: site });
   } catch (error) {
@@ -378,8 +397,17 @@ const getBuilderPublicProfile = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
 
-    const builder = await Builder.findOne({ _id: builderId, isDeleted: false, isActive: true }, "companyName address websiteDetails");
+    const builder = await Builder.findOne({ _id: builderId, isDeleted: false, isActive: true }, "companyName address websiteDetails subscriptions");
     if (!builder) return res.status(404).json({ status: "Fail", message: "Builder not found" });
+
+    // Check builder subscription
+    if (!builder.subscriptions.some(s => s.status === 'active')) {
+      return res.status(403).json({ 
+        status: "Fail", 
+        message: "This profile is currently unavailable due to subscription expiry.",
+        type: "SUBSCRIPTION_EXPIRED"
+      });
+    }
 
     const sites = await Site.find(
       { builderId, isDeleted: false, deleteRequested: false, isActive: true },
