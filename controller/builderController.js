@@ -784,7 +784,7 @@ const getWebsiteDetails = async (req, res) => {
 const updateWebsiteDetails = async (req, res) => {
   try {
     const { builderId } = req.params;
-    let { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks } = req.body;
+    let { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks, companyName, address } = req.body;
 
     // Handle file uploads
     if (req.files) {
@@ -805,9 +805,16 @@ const updateWebsiteDetails = async (req, res) => {
       }
     }
 
+    const updateData = {
+      websiteDetails: { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks }
+    };
+
+    if (companyName) updateData.companyName = companyName;
+    if (address) updateData.address = address;
+
     const builder = await Builder.findByIdAndUpdate(
       builderId,
-      { websiteDetails: { tagline, heroSubtitle, about, phone, email, logo, heroImage, socialLinks } },
+      updateData,
       { new: true, select: "companyName address websiteDetails" }
     );
     if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });

@@ -245,7 +245,7 @@ exports.getDashboardStats = async (req, res) => {
       Lead.countDocuments(baseQuery),
       Lead.countDocuments({ ...baseQuery, createdAt: { $gte: thisWeekStart } }),
       Lead.countDocuments({ ...baseQuery, createdAt: { $gte: lastWeekStart, $lt: thisWeekStart } }),
-      Lead.find(baseQuery, 'stageId stageName').lean(),
+      Lead.find(baseQuery, 'stageId stageName source agentName').lean(),
       Followup.find({ builderId, isCompleted: false, followupDate: { $gte: today, $lt: tomorrow } })
         .populate('leadId', 'name phone siteName budget')
         .sort({ followupDate: 1 })
@@ -256,16 +256,36 @@ exports.getDashboardStats = async (req, res) => {
 
     // Lead funnel by stage
     const stageCounts = {};
+    // Lead by source
+    const sourceCounts = {};
+    // Lead by staff
+    const staffCounts = {};
+
     allLeads.forEach(l => {
-      const key = l.stageName || 'Unknown';
-      stageCounts[key] = (stageCounts[key] || 0) + 1;
+      const stageKey = l.stageName || 'Unknown';
+      stageCounts[stageKey] = (stageCounts[stageKey] || 0) + 1;
+
+      const sourceKey = l.source || 'Unknown';
+      sourceCounts[sourceKey] = (sourceCounts[sourceKey] || 0) + 1;
+
+      const staffKey = l.agentName || 'Unassigned';
+      staffCounts[staffKey] = (staffCounts[staffKey] || 0) + 1;
     });
+
     const funnel = Object.entries(stageCounts)
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
     const maxCount = funnel[0]?.count || 1;
     const funnelWithPercent = funnel.map(f => ({ ...f, percent: Math.round((f.count / maxCount) * 100) }));
+
+    const sources = Object.entries(sourceCounts)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const staffStats = Object.entries(staffCounts)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
 
     // Active subscription expiry
     const activeSub = builderDoc?.subscriptions
@@ -306,6 +326,8 @@ exports.getDashboardStats = async (req, res) => {
           notes: f.notes || '',
         })),
         funnel: funnelWithPercent,
+        sources,
+        staffStats,
         planExpiry,
       }
     });
