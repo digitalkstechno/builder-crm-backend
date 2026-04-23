@@ -183,7 +183,7 @@ const getUserIdByPhone = async (req, res) => {
     if (!builderId) {
       const searchNum = phone.replace(/\D/g, "");
       // Always search with 91 prefix in Whatsapp model
-      const whatsapp = await Whatsapp.findOne({ number: "91" + searchNum, isDeleted: false }, "builderId");
+      const whatsapp = await Whatsapp.findOne({ searchNum, isDeleted: false }, "builderId");
       if (whatsapp) {
         builderId = whatsapp.builderId;
       }
