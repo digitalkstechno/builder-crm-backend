@@ -10,6 +10,7 @@ const Team = require("../model/team");
 const Staff = require("../model/staff");
 const LeadStatus = require("../model/leadStatus");
 const Notification = require("../model/notification");
+const WhatsappConfig = require("../model/whatsappConfig");
 const mongoose = require("mongoose");
 
 const getDefaultStage = async (builderId) => {
@@ -172,7 +173,9 @@ const getUserIdByPhone = async (req, res) => {
 
     // 2. If builderId still not found, check in Whatsapp model
     if (!builderId) {
-      const whatsapp = await Whatsapp.findOne({ number: phone, isDeleted: false }, "builderId");
+      const searchNum = phone.replace(/\D/g, "");
+      // Always search with 91 prefix in Whatsapp model
+      const whatsapp = await Whatsapp.findOne({ number: "91" + searchNum, isDeleted: false }, "builderId");
       if (whatsapp) {
         builderId = whatsapp.builderId;
       }
@@ -354,13 +357,63 @@ const getBuilderPublicProfile = async (req, res) => {
 const getBuilderSites = async (req, res) => {
   try {
     const { builderId } = req.params;
-    console.log("DEBUG: getBuilderSites : builderId:", builderId);
+    const { requirementType, propertyType, budget, city, area, number, to } = req.query;
+
+    if (number && to) {
+      // Find WhatsappConfig for hub number
+      const config = await WhatsappConfig.findOne({ number, isDeleted: false });
+      if (!config) return res.status(200).json({ status: "Success", data: true });
+
+      // Find sites for this hub number
+      const sites = await Site.find({ 
+        builderId, 
+        whatsappNumber: { $regex: number, $options: "i" },
+        isDeleted: false,
+        isActive: true 
+      });
+
+      for (const site of sites) {
+        const siteUrl = `https://builder.digitalks.co.in/property/${site._id}`;
+        let desc = site.description || "";
+        desc = desc
+          .replace(/<[^>]*>/g, "")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/\s+/g, " ")
+          .trim();
+
+        const caption = `*${site.name}*\n*${desc}*\n\n*For more info : - ${siteUrl}*`;
+        const imageLink = site.images && site.images.length > 0 ? `https://builder.digitalks.co.in/api${site.images[0]}` : "";
+
+        const payload = new URLSearchParams();
+        payload.append('to', to);
+        payload.append('link', imageLink);
+        payload.append('caption', caption);
+        payload.append('phone_number_id', config.phoneNumberId || "");
+        payload.append('version', config.apiVersion || "");
+        payload.append('token', config.accessToken || "");
+
+        try {
+          await fetch('https://test.insuraa.in/whatsapp/send_image_msg', {
+            method: 'POST',
+            body: payload,
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          });
+        } catch (err) {
+          console.error("Error sending whatsapp message for site:", site._id, err.message);
+        }
+      }
+
+      return res.status(200).json({ status: "Success", data: true });
+    }
 
     if (!mongoose.Types.ObjectId.isValid(builderId))
       return res.status(400).json({ status: "Fail", message: "Invalid builderId" });
-
-    const { requirementType, propertyType, budget, city, area } = req.query;
-    console.log("DEBUG: getBuilderSites : query params:", { requirementType, propertyType, budget, city, area });
 
     const query = {
       builderId: new mongoose.Types.ObjectId(builderId),

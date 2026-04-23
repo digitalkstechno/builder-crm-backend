@@ -2,11 +2,14 @@ const WhatsappConfig = require("../model/whatsappConfig");
 
 exports.updateWhatsappConfig = async (req, res) => {
   try {
-    const { number, builderId, accessToken, apiVersion, phoneNumberId } = req.body;
+    let { number, builderId, accessToken, apiVersion, phoneNumberId } = req.body;
     
     if (!number || !builderId) {
       return res.status(400).json({ status: "Fail", message: "Number and BuilderId are required" });
     }
+
+    // Format number: Always prepend 91 to the 10-digit number from frontend
+    number = "91" + number.replace(/\D/g, "");
 
     const updatedConfig = await WhatsappConfig.findOneAndUpdate(
       { number },
@@ -33,7 +36,11 @@ exports.updateWhatsappConfig = async (req, res) => {
 
 exports.getWhatsappConfigByNumber = async (req, res) => {
   try {
-    const { number } = req.params;
+    let { number } = req.params;
+
+    // Format number: Always prepend 91 to the 10-digit number for search
+    number = "91" + number.replace(/\D/g, "");
+
     const config = await WhatsappConfig.findOne({ number, isDeleted: false });
     
     return res.status(200).json({

@@ -6,6 +6,9 @@ exports.createWhatsappService = async (builderUserId, { name, number }) => {
   const builder = await Builder.findOne({ userId: builderUserId });
   if (!builder) throw new Error("Builder not found");
 
+  // Format number: Always prepend 91 to the 10-digit number from frontend
+  let formattedNumber = "91" + number.replace(/\D/g, "");
+
   // 2. Check limits
   const currentCount = await Whatsapp.countDocuments({ builderId: builder._id, isDeleted: false });
   if (currentCount >= builder.currentLimits.noOfWhatsapp) {
@@ -15,7 +18,7 @@ exports.createWhatsappService = async (builderUserId, { name, number }) => {
   // 3. Create Whatsapp entry
   const newWhatsapp = new Whatsapp({
     name,
-    number,
+    number: formattedNumber,
     builderId: builder._id,
   });
   await newWhatsapp.save();
@@ -56,6 +59,10 @@ exports.updateWhatsappService = async (whatsappId, builderUserId, updateData) =>
 
   const whatsapp = await Whatsapp.findOne({ _id: whatsappId, builderId: builder._id, isDeleted: false });
   if (!whatsapp) throw new Error("WhatsApp record not found");
+
+  if (updateData.number) {
+    updateData.number = "91" + updateData.number.replace(/\D/g, "");
+  }
 
   const updatedWhatsapp = await Whatsapp.findByIdAndUpdate(whatsappId, updateData, { new: true });
   
