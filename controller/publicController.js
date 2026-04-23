@@ -810,6 +810,25 @@ const createInquiry = async (req, res) => {
   }
 };
 
+
+const handleWebhook = async (req, res) => {
+  try {
+    const { builderId } = req.params;
+    const { requirementType, propertyType, budget, city, area } = { ...req.query, ...req.body };
+
+    console.log("Webhook Received for Builder:", builderId);
+    console.log("Data:", { requirementType, propertyType, budget, city, area });
+
+    return res.status(200).json({
+      status: "Success",
+      message: "Webhook received and logged",
+      receivedData: { requirementType, propertyType, budget, city, area }
+    });
+  } catch (error) {
+    return res.status(500).json({ status: "Fail", message: error.message });
+  }
+};
+
 module.exports = {
   createInquiry,
   getSiteById,
@@ -826,4 +845,5 @@ module.exports = {
   createPublicLeadWithDetails,
   updatePublicLeadWithDetails,
   updatePublicLeadByPhone,
+  handleWebhook,
 };

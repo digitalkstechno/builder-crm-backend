@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { createInquiry, getSiteById, getBuilderCities, getBuilderCityAreas, getUserIdByPhone, createPublicLead, getBuilderRequirementTypes, getBuilderPropertyTypes, getBuilderBudgets, getBuilderSites, getBuilderSitesMsg, getBuilderPublicProfile, createPublicLeadWithDetails, updatePublicLeadWithDetails, updatePublicLeadByPhone } = require("../controller/publicController");
+const { createInquiry, getSiteById, getBuilderCities, getBuilderCityAreas, getUserIdByPhone, createPublicLead, getBuilderRequirementTypes, getBuilderPropertyTypes, getBuilderBudgets, getBuilderSites, getBuilderSitesMsg, getBuilderPublicProfile, createPublicLeadWithDetails, updatePublicLeadWithDetails, updatePublicLeadByPhone, handleWebhook } = require("../controller/publicController");
 
 
 router.get("/user-by-phone/:phone", getUserIdByPhone);
@@ -14,6 +14,7 @@ router.get("/builders/:builderId/cities", getBuilderCities);
 router.get("/builders/:builderId/cities/:city/areas", getBuilderCityAreas);
 router.get("/builders/:builderId/sites", getBuilderSites);
 router.get("/builders/:builderId/sites-msg", getBuilderSitesMsg);
+router.post("/builders/:builderId/webhook", handleWebhook);
 // router.post("/builders/:builderId/leads", createPublicLeadWithDetails);
 router.patch("/builders/:builderId/leads/:leadId", updatePublicLeadWithDetails);
 router.post("/builders/:builderId/leads/:leadId", updatePublicLeadWithDetails);
