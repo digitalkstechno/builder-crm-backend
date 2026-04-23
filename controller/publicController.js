@@ -2,6 +2,7 @@ const Site = require("../model/site");
 const User = require("../model/user");
 const Lead = require("../model/lead");
 const Builder = require("../model/builder");
+const Whatsapp = require("../model/whatsapp");
 const RequirementType = require("../model/requirementType");
 const PropertyType = require("../model/propertyType");
 const Budget = require("../model/budget");
@@ -154,16 +155,34 @@ const getBuilderCityAreas = async (req, res) => {
 const getUserIdByPhone = async (req, res) => {
   try {
     const { phone } = req.params;
-    const user = await User.findOne({ phone, isDeleted: false }, "_id builderId role");
-    if (!user) return res.status(404).json({ status: "Fail", message: "User not found" });
+    let userId = null;
+    let builderId = null;
 
-    let builderId = user.builderId;
-    if (user.role === "BUILDER") {
-      const builder = await Builder.findOne({ userId: user._id, isDeleted: false }, "_id");
-      builderId = builder ? builder._id : null;
+    // 1. Check in User model
+    const user = await User.findOne({ phone, isDeleted: false }, "_id builderId role");
+    if (user) {
+      userId = user._id;
+      builderId = user.builderId;
+      
+      if (user.role === "BUILDER") {
+        const builder = await Builder.findOne({ userId: user._id, isDeleted: false }, "_id");
+        if (builder) builderId = builder._id;
+      }
     }
 
-    return res.status(200).json({ status: "Success", data: { _id: user._id, builderId } });
+    // 2. If builderId still not found, check in Whatsapp model
+    if (!builderId) {
+      const whatsapp = await Whatsapp.findOne({ number: phone, isDeleted: false }, "builderId");
+      if (whatsapp) {
+        builderId = whatsapp.builderId;
+      }
+    }
+
+    if (!userId && !builderId) {
+      return res.status(404).json({ status: "Fail", message: "User not found" });
+    }
+
+    return res.status(200).json({ status: "Success", data: { _id: userId, builderId } });
   } catch (error) {
     return res.status(500).json({ status: "Fail", message: error.message });
   }
@@ -811,23 +830,7 @@ const createInquiry = async (req, res) => {
 };
 
 
-const handleWebhook = async (req, res) => {
-  try {
-    const { builderId } = req.params;
-    const { requirementType, propertyType, budget, city, area } = { ...req.query, ...req.body };
 
-    console.log("Webhook Received for Builder:", builderId);
-    console.log("Data:", { requirementType, propertyType, budget, city, area });
-
-    return res.status(200).json({
-      status: "Success",
-      message: "Webhook received and logged",
-      receivedData: { requirementType, propertyType, budget, city, area }
-    });
-  } catch (error) {
-    return res.status(500).json({ status: "Fail", message: error.message });
-  }
-};
 
 module.exports = {
   createInquiry,
@@ -845,5 +848,4 @@ module.exports = {
   createPublicLeadWithDetails,
   updatePublicLeadWithDetails,
   updatePublicLeadByPhone,
-  handleWebhook,
 };
