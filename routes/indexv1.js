@@ -20,5 +20,6 @@ router.use("/property-type", require("./propertyType"));
 router.use("/city-area", require("./cityArea"));
 router.use("/budget", require("./budget"));
 router.use("/admin-leads", require("./adminLeads"));
+router.use("/reports", require("./report"));
 
 module.exports = router;
