@@ -11,6 +11,17 @@ const WhatsappSchema = new mongoose.Schema(
     },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+    deleteRequested: { type: Boolean, default: false },
+    whatsappStatus: {
+      type: String,
+      enum: ["connected", "disconnected"],
+      default: "disconnected",
+    },
+    chatbotStatus: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "inactive",
+    },
   },
   { timestamps: true }
 );

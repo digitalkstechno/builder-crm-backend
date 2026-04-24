@@ -17,16 +17,6 @@ const SiteSchema = new mongoose.Schema(
       enum: ["Planning", "Active"],
       default: "Planning",
     },
-    whatsappStatus: {
-      type: String,
-      enum: ["connected", "disconnected"],
-      default: "disconnected",
-    },
-    chatbotStatus: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "inactive",
-    },
 
     address: { type: String },
     mapUrl: { type: String },

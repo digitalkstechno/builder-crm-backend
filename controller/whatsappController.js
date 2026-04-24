@@ -2,7 +2,9 @@ const {
   createWhatsappService,
   fetchBuilderWhatsappService,
   updateWhatsappService,
-  deleteWhatsappService
+  deleteWhatsappService,
+  getAllWhatsappForAdminService,
+  updateWhatsappStatusService
 } = require("../service/whatsapp");
 
 exports.addWhatsapp = async (req, res) => {
@@ -61,6 +63,25 @@ exports.deleteWhatsapp = async (req, res) => {
     const { id } = req.params;
     await deleteWhatsappService(id, builderUserId);
     res.status(200).json({ success: true, status: "Success", message: "WhatsApp record deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
+exports.getAdminWhatsappList = async (req, res) => {
+  try {
+    const whatsappData = await getAllWhatsappForAdminService();
+    res.status(200).json({ success: true, status: "Success", data: whatsappData });
+  } catch (error) {
+    res.status(500).json({ success: false, status: "Fail", message: error.message });
+  }
+};
+
+exports.updateWhatsappStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await updateWhatsappStatusService(id, req.body);
+    res.status(200).json({ success: true, status: "Success", data: updated });
   } catch (error) {
     res.status(500).json({ success: false, status: "Fail", message: error.message });
   }
