@@ -464,7 +464,7 @@ const getBuilderSites = async (req, res) => {
         }
 
         const caption = `*${site.name}*\n${desc}\n\n*For more info : - ${siteUrl}*`;
-        const imageLink = site.images && site.images.length > 0 ? `https://builder.digitalks.co.in/api${site.images[0]}` : "";
+        const imageLink = site.images && site.images.length > 0 ? `${process.env.API_BASE_URL}${site.images[0]}` : "";
 
         const payload = new URLSearchParams();
         payload.append('to', to);
