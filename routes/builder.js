@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { registerBuilder, extraManualRegister, createOrder, checkPhoneStatus, savePaymentInfo, builderLogin, getBuilderProfile, getAllBuilders, renewSubscription, getWebsiteDetails, updateWebsiteDetails } = require("../controller/builderController");
+const { registerBuilder, extraManualRegister, createOrder, checkPhoneStatus, savePaymentInfo, builderLogin, getBuilderProfile, getAllBuilders, renewSubscription, getWebsiteDetails, updateWebsiteDetails, updateSidebarLogo } = require("../controller/builderController");
 const authMiddleware = require("../middleware/auth");
 const upload = require("../middleware/upload");
 
@@ -15,5 +15,6 @@ router.post("/extra-register", extraManualRegister);
 router.post("/renew-subscription", renewSubscription);
 router.get("/:builderId/website", authMiddleware, getWebsiteDetails);
 router.put("/:builderId/website", authMiddleware, upload.fields([{ name: "logo", maxCount: 1 }, { name: "heroImage", maxCount: 1 }]), updateWebsiteDetails);
+router.put("/:builderId/sidebar-logo", authMiddleware, upload.fields([{ name: "sidebarLogo", maxCount: 1 }]), updateSidebarLogo);
 
 module.exports = router;

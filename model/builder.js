@@ -31,6 +31,7 @@ const BuilderSchema = new mongoose.Schema(
     },
     companyName: { type: String },
     address: { type: String },
+    sidebarLogo: { type: String },
     
     // Current active limits (for quick access)
     currentLimits: {

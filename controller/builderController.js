@@ -773,7 +773,7 @@ const getBuilderById = async (req, res) => {
 const getWebsiteDetails = async (req, res) => {
   try {
     const { builderId } = req.params;
-    const builder = await Builder.findById(builderId, "companyName address websiteDetails");
+    const builder = await Builder.findById(builderId, "companyName address websiteDetails sidebarLogo");
     if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });
     res.status(200).json({ success: true, data: builder });
   } catch (error) {
@@ -824,6 +824,27 @@ const updateWebsiteDetails = async (req, res) => {
   }
 };
 
+const updateSidebarLogo = async (req, res) => {
+  try {
+    const { builderId } = req.params;
+    let sidebarLogo = req.body.sidebarLogo;
+
+    if (req.files && req.files.sidebarLogo) {
+      sidebarLogo = `/uploads/${req.files.sidebarLogo[0].filename}`;
+    }
+
+    const builder = await Builder.findByIdAndUpdate(
+      builderId,
+      { sidebarLogo },
+      { new: true }
+    );
+    if (!builder) return res.status(404).json({ success: false, message: "Builder not found" });
+    res.status(200).json({ success: true, data: builder });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   checkPhoneStatus,
   savePaymentInfo,
@@ -840,4 +861,5 @@ module.exports = {
   renewSubscription,
   getWebsiteDetails,
   updateWebsiteDetails,
+  updateSidebarLogo,
 };
